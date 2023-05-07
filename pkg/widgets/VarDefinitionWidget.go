@@ -96,21 +96,21 @@ func NewVarDefinitionWidget(ls *widget.List, definedVars *kwp2000.VarDefinitionL
 	})
 	vd.objects = []fyne.CanvasObject{
 		container.NewHBox(
-			minWidth(250, vd.symbolName),
-			minWidth(90, vd.symbolMethod),
-			minWidth(50, vd.symbolNumber),
-			minWidth(40, vd.symbolType),
-			minWidth(80, vd.symbolSigned),
-			minWidth(50, vd.symbolCorrectionfactor),
-			minWidth(130, vd.symbolGroup),
-			minWidth(90, vd.symbolDeleteBTN),
+			MinWidth(250, vd.symbolName),
+			MinWidth(90, vd.symbolMethod),
+			MinWidth(50, vd.symbolNumber),
+			MinWidth(40, vd.symbolType),
+			MinWidth(80, vd.symbolSigned),
+			MinWidth(50, vd.symbolCorrectionfactor),
+			MinWidth(130, vd.symbolGroup),
+			MinWidth(90, vd.symbolDeleteBTN),
 		),
 	}
 
 	return vd
 }
 
-func minWidth(width float32, obj fyne.CanvasObject) *fyne.Container {
+func MinWidth(width float32, obj fyne.CanvasObject) *fyne.Container {
 	return container.New(&diagonal{width: width}, obj)
 }
 

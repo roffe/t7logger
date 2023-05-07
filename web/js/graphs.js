@@ -19,8 +19,11 @@ function getGraphBaseConfig() {
         },
         tooltip: {
             shared: true,
-            headerFormat: '<b>{series.name}</b><br/>',
-            pointFormat: '{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}'
+            //headerFormat: '<b>{series.name}</b><br/>',
+            //pointFormat: '{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}',
+            pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y}</b><br/>',
+            valueDecimals: 2,
+            split: false
         },
         series: []
     };

@@ -7,16 +7,16 @@ func GetUnit(name string) string {
 	case "In.p_AirAmbient":
 		return "kPa"
 	case "In.v_Vehicle":
-		return "km/h"
+		return "Km/h"
 	case "IgnProt.fi_Offset":
-		return "degrees"
+		return "Degrees"
 	case "Out.fi_Ignition":
-		return "b BTDC"
+		return "° BTDC"
 	case "ECMStat.p_Diff", "ECMStat.p_DiffThrot", "In.p_AirBefThrottle":
-		return "bar"
+		return "Bar"
 	case "m_Request", "MAF.m_AirInlet":
-		return "mg/c"
+		return "Mg/c"
 	default:
-		return "value"
+		return "Value"
 	}
 }

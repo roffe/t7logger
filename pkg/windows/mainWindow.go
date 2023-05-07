@@ -108,27 +108,63 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 	})
 
 	left := container.NewBorder(
-		container.NewBorder(
-			nil,
-			nil,
-			nil,
-			container.NewHBox(
-				widget.NewButtonWithIcon("Add", theme.ContentAddIcon(), func() {
-					defer mw.symbolConfigList.Refresh()
-					s, ok := mw.symbolMap[mw.symbolLookup.Text]
-					if !ok {
-						mw.vars.Add(&kwp2000.VarDefinition{
-							Name: mw.symbolLookup.Text,
-						})
-						return
-					}
-					mw.vars.Add(s)
-					//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
-				}),
-				loadBinBtn,
-			),
+		container.NewVBox(
+			container.NewBorder(
+				nil,
+				nil,
+				nil,
+				container.NewHBox(
+					widget.NewButtonWithIcon("Add", theme.ContentAddIcon(), func() {
+						defer mw.symbolConfigList.Refresh()
+						s, ok := mw.symbolMap[mw.symbolLookup.Text]
+						if !ok {
+							mw.vars.Add(&kwp2000.VarDefinition{
+								Name: mw.symbolLookup.Text,
+							})
+							return
+						}
+						mw.vars.Add(s)
+						//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
+					}),
+					loadBinBtn,
+				),
 
-			mw.symbolLookup,
+				mw.symbolLookup,
+			),
+			container.NewHBox(
+				widgets.MinWidth(250, &widget.Label{
+					Text:      "Name",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(90, &widget.Label{
+					Text:      "Method",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(50, &widget.Label{
+					Text:      "#",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(40, &widget.Label{
+					Text:      "Type",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(80, &widget.Label{
+					Text:      "Signed",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(50, &widget.Label{
+					Text:      "Factor",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(130, &widget.Label{
+					Text:      "Group",
+					Alignment: fyne.TextAlignLeading,
+				}),
+				widgets.MinWidth(90, &widget.Label{
+					Text:      "",
+					Alignment: fyne.TextAlignLeading,
+				}),
+			),
 		),
 		container.NewVBox(
 			container.NewGridWithColumns(4,

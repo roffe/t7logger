@@ -96,7 +96,7 @@ func (mw *MainWindow) newOutputList() *widget.List {
 func (mw *MainWindow) newSymbolnameTypeahead() *xwidget.CompletionEntry {
 	symbolLookup := xwidget.NewCompletionEntry([]string{})
 
-	symbolLookup.PlaceHolder = "Type to search for symbols"
+	symbolLookup.PlaceHolder = "Type to search for symbols after loading binary"
 
 	// When the use typed text, complete the list.
 	symbolLookup.OnChanged = func(s string) {
