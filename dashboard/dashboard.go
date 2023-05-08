@@ -103,7 +103,6 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 		for _, f := range files {
 			logfiles = append(logfiles, LogFile{Name: f.Name()})
 		}
-
 		s.Emit("log_list", logfiles)
 	})
 

@@ -83,6 +83,6 @@ socket.on('connect', () => {
     $('#loading-spinner').remove();
     clearInterval(redrawInterval);
 
-    socket.emit('request_symbols');
     socket.emit('list_logs')
+    socket.emit('request_symbols');
 });

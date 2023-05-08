@@ -10,11 +10,6 @@ function getGraphBaseConfig() {
         time: {
             useUTC: false
         },
-        boost: {
-            useGPUTranslations: true,
-            // Chart-level boost when there are more than 5 series in the chart
-            seriesThreshold: 1
-        },
         title: {
             text: null
         },
@@ -45,7 +40,6 @@ function createNewSeries(graph, type, unit, title) {
             console.error('Not supported graph type ' + type)
     }
     return graph.addSeries({
-        boostThreshold: 1,
         name: title,
         type: seriesType,
     });
