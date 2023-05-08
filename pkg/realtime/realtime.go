@@ -1,7 +1,12 @@
 package realtime
 
 import (
+	"embed"
+	"io/fs"
 	"log"
+	"net/http"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -20,9 +25,19 @@ type SymbolDefinition struct {
 	Group string
 }
 
-func StartWebserver(sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
-	time.Sleep(2 * time.Second)
-	router := gin.New()
+//go:embed public
+var public embed.FS
+
+func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
+	time.Sleep(1 * time.Second)
+	if dd, err := public.ReadDir("."); err == nil {
+		for _, d := range dd {
+			log.Println(d.Name())
+		}
+	} else {
+		log.Fatal(err)
+	}
+	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
 		//AllowOrigins:     []string{"*"},
@@ -57,8 +72,6 @@ func StartWebserver(sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
 		s.Leave("metrics")
 	})
 
-	lastMsgs := make([][]byte, 0, 10)
-
 	server.OnEvent("/", "start_session", func(s socketio.Conn, msg string) {
 		s.Join("metrics")
 
@@ -67,7 +80,6 @@ func StartWebserver(sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
 	server.OnEvent("/", "request_symbols", func(s socketio.Conn) {
 		var symbolList []SymbolDefinition
 		for _, v := range vars.Get() {
-			//vis := "linegraph"
 			symbolList = append(symbolList, SymbolDefinition{
 				Name:  v.Name,
 				ID:    v.Value,
@@ -87,17 +99,25 @@ func StartWebserver(sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
 	defer server.Close()
 
 	sub := sm.NewSubscriber(func(msg *sink.Message) {
-		if len(lastMsgs) > 100 {
-			lastMsgs = lastMsgs[1:]
-		}
-		lastMsgs = append(lastMsgs, msg.Data)
 		if server.Count() > 0 {
 			server.BroadcastToRoom("/", "metrics", "metrics", string(msg.Data))
 		}
 	})
 	defer sub.Close()
+	if !releaseMode {
+		router.Use(static.Serve("/", static.LocalFile("./pkg/realtime/public", false)))
+	} else {
+		subFS, err := fs.Sub(public, "public")
+		if err != nil {
+			log.Fatal(err)
+		}
+		router.Use(static.Serve("/", &HttpFileSystem{
+			FileSystem: http.FS(subFS),
+			root:       "/",
+			indexes:    false,
+		}))
+	}
 
-	router.Use(static.Serve("/", static.LocalFile("./web", false)))
 	router.GET("/socket.io/*any", gin.WrapH(server))
 	router.POST("/socket.io/*any", gin.WrapH(server))
 
@@ -111,4 +131,40 @@ func returnVis(t string) string {
 		return "linegraph"
 	}
 	return t
+}
+
+type HttpFileSystem struct {
+	http.FileSystem
+	root    string
+	indexes bool
+}
+
+func (l *HttpFileSystem) Exists(prefix string, filepath string) bool {
+	if p := strings.TrimPrefix(filepath, prefix); len(p) < len(filepath) {
+		name := path.Join(l.root, p)
+		f, err := l.FileSystem.Open(name)
+		if err != nil {
+			return false
+		}
+		defer f.Close()
+		stats, err := f.Stat()
+		if err != nil {
+			return false
+		}
+		if stats.IsDir() {
+			if !l.indexes {
+				index := path.Join(name, "index.html")
+				f2, err := l.FileSystem.Open(index)
+				if err != nil {
+					return false
+				}
+				defer f2.Close()
+				if _, err := f2.Stat(); err != nil {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
 }

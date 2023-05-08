@@ -19,16 +19,15 @@ func init() {
 }
 
 func main() {
-	sm := sink.NewManager()
-
 	vars := kwp2000.NewVarDefinitionList()
-
-	go realtime.StartWebserver(sm, vars)
+	sm := sink.NewManager()
 	//sub := sinkManager.NewSubscriber(func(msg string) {
 	//	fmt.Println("msg:", msg)
 	//})
 	//defer sub.Close()
 	a := app.NewWithID("com.roffe.t7l")
+
+	go realtime.StartWebserver(a.Metadata().Release, sm, vars)
 	mw := windows.NewMainWindow(a, sm, vars)
 	mw.SetMaster()
 	mw.Resize(fyne.NewSize(1400, 800))
