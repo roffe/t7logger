@@ -121,7 +121,7 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 	})
 	defer sub.Close()
 	if !releaseMode {
-		router.Use(static.Serve("/", static.LocalFile("./pkg/realtime/public", false)))
+		router.Use(static.Serve("/", static.LocalFile("./dashboard/public", false)))
 	} else {
 		subFS, err := fs.Sub(public, "public")
 		if err != nil {

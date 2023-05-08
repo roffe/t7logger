@@ -8,7 +8,7 @@ import (
 
 	//xlayout "fyne.io/x/fyne/layout"
 
-	"github.com/roffe/t7logger/pkg/dashboard"
+	"github.com/roffe/t7logger/dashboard"
 	"github.com/roffe/t7logger/pkg/kwp2000"
 	"github.com/roffe/t7logger/pkg/sink"
 	"github.com/roffe/t7logger/pkg/windows"
@@ -19,14 +19,9 @@ func init() {
 }
 
 func main() {
+	a := app.NewWithID("com.roffe.t7l")
 	vars := kwp2000.NewVarDefinitionList()
 	sm := sink.NewManager()
-	//sub := sinkManager.NewSubscriber(func(msg string) {
-	//	fmt.Println("msg:", msg)
-	//})
-	//defer sub.Close()
-	a := app.NewWithID("com.roffe.t7l")
-
 	go dashboard.StartWebserver(a.Metadata().Release, sm, vars)
 	mw := windows.NewMainWindow(a, sm, vars)
 	mw.SetMaster()
