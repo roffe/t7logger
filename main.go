@@ -8,8 +8,8 @@ import (
 
 	//xlayout "fyne.io/x/fyne/layout"
 
+	"github.com/roffe/t7logger/pkg/dashboard"
 	"github.com/roffe/t7logger/pkg/kwp2000"
-	"github.com/roffe/t7logger/pkg/realtime"
 	"github.com/roffe/t7logger/pkg/sink"
 	"github.com/roffe/t7logger/pkg/windows"
 )
@@ -27,7 +27,7 @@ func main() {
 	//defer sub.Close()
 	a := app.NewWithID("com.roffe.t7l")
 
-	go realtime.StartWebserver(a.Metadata().Release, sm, vars)
+	go dashboard.StartWebserver(a.Metadata().Release, sm, vars)
 	mw := windows.NewMainWindow(a, sm, vars)
 	mw.SetMaster()
 	mw.Resize(fyne.NewSize(1400, 800))

@@ -56,7 +56,14 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Start() error {
-	filename := fmt.Sprintf("log-%s.t7l", time.Now().Format("2006-01-02-15-04-05"))
+	if _, err := os.Stat("logs"); os.IsNotExist(err) {
+		if err := os.Mkdir("logs", 0755); err != nil {
+			if err != os.ErrExist {
+				return fmt.Errorf("failed to create logs dir: %w", err)
+			}
+		}
+	}
+	filename := fmt.Sprintf("logs/log-%s.t7l", time.Now().Format("2006-01-02-15-04-05"))
 	c.onMessage(fmt.Sprintf("Logging to %s", filename))
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
@@ -86,7 +93,6 @@ func (c *Client) Start() error {
 	c.errorCounter.Set(errCount)
 
 	c.onMessage(fmt.Sprintf("Starting live logging at %d fps", c.freq))
-	//empty update queue
 	select {
 	case <-c.variables.Update():
 	default:

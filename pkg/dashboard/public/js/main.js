@@ -74,10 +74,15 @@ socket.on("symbol_list", data => {
     }
 });
 
+socket.on("log_list", data => {
+    console.log('Logs', data);
+})
+
 socket.on('connect', () => {
     console.log('Socket connected!');
     $('#loading-spinner').remove();
     clearInterval(redrawInterval);
 
     socket.emit('request_symbols');
+    socket.emit('list_logs')
 });

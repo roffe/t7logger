@@ -1,10 +1,11 @@
-package realtime
+package dashboard
 
 import (
 	"embed"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -60,7 +61,7 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 
 	server.OnConnect("/", func(s socketio.Conn) error {
 		s.SetContext("")
-		log.Println("connected:", s.ID())
+		log.Println("socket.io connected:", s.ID())
 		return nil
 	})
 
@@ -89,6 +90,21 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 			})
 		}
 		s.Emit("symbol_list", symbolList)
+	})
+
+	server.OnEvent("/", "list_logs", func(s socketio.Conn) {
+		files, err := os.ReadDir("./logs")
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		var logfiles []LogFile
+		for _, f := range files {
+			logfiles = append(logfiles, LogFile{Name: f.Name()})
+		}
+
+		s.Emit("log_list", logfiles)
 	})
 
 	go func() {
@@ -124,6 +140,10 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal("failed run app: ", err)
 	}
+}
+
+type LogFile struct {
+	Name string
 }
 
 func returnVis(t string) string {
