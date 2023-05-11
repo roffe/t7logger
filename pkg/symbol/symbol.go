@@ -17,14 +17,18 @@ import (
 )
 
 type Symbol struct {
-	data             []byte
-	Name             string
-	Number           int
-	Type             uint8
-	Address          uint32
-	Length           uint16
+	Name   string
+	Number int
+
+	Address uint32
+	Length  uint16
+	Mask    uint16
+	Type    uint8
+
 	Correctionfactor string
 	Unit             string
+
+	data []byte
 }
 
 func NewFromData(data []byte, symb_count int) *Symbol {
@@ -37,22 +41,31 @@ func NewFromData(data []byte, symb_count int) *Symbol {
 	if symb_count == 0 {
 		symbol_length = 0x08
 	} else {
-		for i := 4; i < 6; i++ {
+		for i := 4; i <= 5; i++ {
 			symbol_length <<= 8
 			symbol_length |= uint16(data[i])
 		}
+	}
+
+	var symbol_mask uint16
+	for i := 6; i <= 7; i++ {
+		symbol_mask <<= 8
+		symbol_mask |= uint16(data[i])
 	}
 	//			log.Printf("Internal address: %X", internall_address)
 	//			log.Printf("Symbol length: %X", symbollength)
 
 	symbol_type := data[8]
+
 	return &Symbol{
+		Name:    "Symbol-" + strconv.Itoa(symb_count),
 		Number:  symb_count,
-		Type:    symbol_type,
-		Name:    "Symbol " + strconv.Itoa(symb_count),
 		Address: internall_address,
 		Length:  symbol_length,
+		Mask:    symbol_mask,
+		Type:    symbol_type,
 	}
+
 }
 
 func (s *Symbol) String() string {
@@ -108,6 +121,8 @@ func binaryPacked(file *os.File) ([]*Symbol, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	//os.WriteFile("compressedSymbolTable.bin", compressedSymbolTable, 0644)
 	if addressTableOffset == -1 {
 		return nil, errors.New("could not find addressTableOffset table")
 	}
@@ -152,7 +167,18 @@ func binaryPacked(file *os.File) ([]*Symbol, error) {
 			symbols[i].Correctionfactor = GetCorrectionfactor(symbols[i].Name)
 		}
 	}
+
+	ff, err := os.OpenFile("symbols.txt", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer ff.Close()
+
+	for _, s := range symbols {
+		ff.WriteString(fmt.Sprintf("%s\n", s.String()))
+	}
 	return symbols, nil
+
 }
 
 var searchPattern = []byte{

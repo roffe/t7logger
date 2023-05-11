@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/static"
@@ -29,8 +28,8 @@ type SymbolDefinition struct {
 //go:embed public
 var public embed.FS
 
-func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList) {
-	time.Sleep(1 * time.Second)
+func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList, ready chan struct{}) {
+	<-ready
 	if dd, err := public.ReadDir("."); err == nil {
 		for _, d := range dd {
 			log.Println(d.Name())
@@ -75,7 +74,6 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 
 	server.OnEvent("/", "start_session", func(s socketio.Conn, msg string) {
 		s.Join("metrics")
-
 	})
 
 	server.OnEvent("/", "request_symbols", func(s socketio.Conn) {
@@ -108,17 +106,20 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 
 	go func() {
 		if err := server.Serve(); err != nil {
-			log.Fatalf("socketio listen error: %s\n", err)
+			log.Fatalf("socket.io listen error: %s\n", err)
 		}
 	}()
 	defer server.Close()
 
+	// Create a subscriber for the metrics topic that push messages to the socket.io server if there is clients connected
 	sub := sm.NewSubscriber(func(msg *sink.Message) {
-		if server.Count() > 0 {
+		if server.RoomLen("/", "metrics") > 0 {
 			server.BroadcastToRoom("/", "metrics", "metrics", string(msg.Data))
 		}
 	})
 	defer sub.Close()
+
+	// Read files from disk if not running in release mode, else serve them from in-memory FS
 	if !releaseMode {
 		router.Use(static.Serve("/", static.LocalFile("./dashboard/public", false)))
 	} else {
@@ -133,9 +134,11 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 		}))
 	}
 
+	// Handle socket.io routes
 	router.GET("/socket.io/*any", gin.WrapH(server))
 	router.POST("/socket.io/*any", gin.WrapH(server))
 
+	// Start webserver
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal("failed run app: ", err)
 	}
@@ -178,6 +181,7 @@ func (l *HttpFileSystem) Exists(prefix string, filepath string) bool {
 					return false
 				}
 				defer f2.Close()
+
 				if _, err := f2.Stat(); err != nil {
 					return false
 				}

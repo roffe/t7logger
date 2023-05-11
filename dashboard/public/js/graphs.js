@@ -3,6 +3,7 @@ var graphId = 0;
 function getGraphBaseConfig() {
     let cfg = {
         chart: {
+            //height: "700",
             zoomType: 'x',
             animation: Highcharts.svg, // don't animate in old IE
             marginRight: 10,
@@ -17,6 +18,11 @@ function getGraphBaseConfig() {
             type: 'datetime',
             tickPixelInterval: 200,
         },
+        legend: {
+            enabled: true,
+            layout: 'horizontal',
+        },
+
         tooltip: {
             shared: true,
             //headerFormat: '<b>{series.name}</b><br/>',

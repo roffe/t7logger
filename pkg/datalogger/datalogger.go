@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -82,6 +83,13 @@ func (c *Client) Start() error {
 	c.k = kwp2000.New(cl)
 	if err := c.k.StartSession(ctx, kwp2000.INIT_MSG_ID, kwp2000.INIT_RESP_ID); err != nil {
 		return err
+	}
+
+	symbolTable, err := c.k.ReadDataByLocalIdentifier2(ctx, 1)
+	if err != nil {
+		log.Println(err)
+	} else {
+		log.Printf("Symbol table: %X", symbolTable)
 	}
 
 	if err := c.defVars(ctx); err != nil {

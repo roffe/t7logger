@@ -19,13 +19,15 @@ func init() {
 }
 
 func main() {
+	ready := make(chan struct{})
 	a := app.NewWithID("com.roffe.t7l")
 	vars := kwp2000.NewVarDefinitionList()
 	sm := sink.NewManager()
-	go dashboard.StartWebserver(a.Metadata().Release, sm, vars)
+	go dashboard.StartWebserver(a.Metadata().Release, sm, vars, ready)
 	mw := windows.NewMainWindow(a, sm, vars)
 	mw.SetMaster()
 	mw.Resize(fyne.NewSize(1400, 800))
 	mw.SetContent(mw.Layout())
+	close(ready)
 	mw.ShowAndRun()
 }

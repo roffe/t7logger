@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"time"
@@ -57,14 +58,122 @@ func (t *Client) StartSession(ctx context.Context, id, responseID uint32) error 
 	return nil
 }
 
-func (t *Client) StopSession(ctx context.Context, id uint32) error {
-	payload := []byte{0x3F, STOP_COMMUNICATION, 0x00, 0x11, byte(REQ_MSG_ID >> 8), byte(REQ_MSG_ID), 0x00, 0x00}
+func (t *Client) StopSession(ctx context.Context) error {
+	payload := []byte{0x40, 0xA1, 0x02, STOP_COMMUNICATION, 0x00}
 	frame := gocan.NewFrame(REQ_MSG_ID, payload, gocan.ResponseRequired)
 	return t.c.Send(frame)
 }
 
+func (t *Client) StartRoutineByIdentifier(ctx context.Context, id byte) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x03, START_ROUTINE_BY_LOCAL_IDENTIFIER, id, 0x10}, gocan.ResponseRequired)
+	log.Println(frame.String())
+	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println(resp.String())
+
+	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, fmt.Errorf("StartRoutineByIdentifier: %w", TranslateErrorCode(d[5]))
+	}
+
+	return d, nil
+}
+
+func (t *Client) StopRoutineByIdentifier(ctx context.Context, id byte) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, STOP_ROUTINE_BY_LOCAL_IDENTIFIER, id}, gocan.ResponseRequired)
+	log.Println(frame.String())
+	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+	if err != nil {
+		return nil, err
+	}
+	log.Println(resp.String())
+	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, fmt.Errorf("StopRoutineByIdentifier: %w", TranslateErrorCode(d[5]))
+	}
+	return d, nil
+}
+
+func (t *Client) RequestRoutineResultsByLocalIdentifier(ctx context.Context, id byte) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, REQUEST_ROUTINE_RESULTS_BY_LOCAL_IDENTIFIER, id}, gocan.ResponseRequired)
+	log.Println(frame.String())
+	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println(resp.String())
+
+	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, fmt.Errorf("RequestRoutineResultsByLocalIdentifier: %w", TranslateErrorCode(d[5]))
+	}
+	return d, nil
+}
+
+func (t *Client) ReadDataByLocalIdentifier2(ctx context.Context, id byte) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, 0x50, id, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
+	log.Println(frame.String())
+	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := bytes.NewBuffer(nil)
+
+	log.Println(resp.String())
+
+	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, fmt.Errorf("ReadDataByLocalIdentifier2: %w", TranslateErrorCode(d[5]))
+	}
+
+	dataLenLeft := d[2] - 2
+	//log.Println(resp.String())
+	//log.Printf("data len left: %d", dataLenLeft)
+
+	var thisRead byte
+	if dataLenLeft > 3 {
+		thisRead = 3
+	} else {
+		thisRead = dataLenLeft
+	}
+
+	out.Write(d[5 : 5+thisRead])
+	dataLenLeft -= thisRead
+
+	//log.Printf("data len left: %d", dataLenLeft)
+	//log.Println(resp.String())
+
+	currentChunkNumber := d[0] & 0x3F
+
+	for currentChunkNumber != 0 {
+		//log.Printf("current chunk %02X", currentChunkNumber)
+		frame := gocan.NewFrame(RESP_CHUNK_CONF_ID, []byte{0x40, 0xA1, 0x3F, d[0] &^ 0x40, 0x00, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
+		//log.Println(frame.String())
+		resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+		if err != nil {
+			return nil, err
+		}
+		d = resp.Data()
+
+		toRead := uint8(math.Min(6, float64(dataLenLeft)))
+		//log.Println("bytes to read", toRead)
+		out.Write(d[2 : 2+toRead])
+		dataLenLeft -= toRead
+		//log.Printf("data len left: %d", dataLenLeft)
+		currentChunkNumber = d[0] & 0x3F
+		//log.Printf("next chunk %02X", currentChunkNumber)
+	}
+
+	return out.Bytes(), nil
+}
+
 func (t *Client) ReadDataByLocalIdentifier(ctx context.Context, id byte) ([]byte, error) {
-	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, READ_DATA_BY_LOCAL_IDENTIFIER, 0xF0, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, READ_DATA_BY_LOCAL_IDENTIFIER, id, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
 	resp, err := t.c.SendAndPoll(ctx, frame, 50*time.Millisecond, t.responseID)
 	if err != nil {
 		return nil, err
@@ -72,6 +181,10 @@ func (t *Client) ReadDataByLocalIdentifier(ctx context.Context, id byte) ([]byte
 	out := bytes.NewBuffer(nil)
 
 	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, fmt.Errorf("ReadDataByLocalIdentifier: %w", TranslateErrorCode(d[5]))
+	}
+
 	dataLenLeft := d[2] - 2
 	//log.Println(resp.String())
 	//log.Printf("data len left: %d", dataLenLeft)
@@ -113,11 +226,26 @@ func (t *Client) ReadDataByLocalIdentifier(ctx context.Context, id byte) ([]byte
 	return out.Bytes(), nil
 }
 
+func (t *Client) TransferData(ctx context.Context) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, TRANSFER_DATA, 0x00}, gocan.ResponseRequired)
+	log.Println(frame.String())
+	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println(resp.String())
+
+	d := resp.Data()
+	if d[3] == 0x7F {
+		return nil, TranslateErrorCode(d[5])
+	}
+	return d, nil
+}
+
 func (t *Client) DynamicallyDefineLocalIdRequest(ctx context.Context, id int, v *VarDefinition) error {
 	buff := bytes.NewBuffer(nil)
-
 	buff.WriteByte(0xF0)
-
 	switch v.Method {
 	case VAR_METHOD_ADDRESS:
 		buff.Write([]byte{0x03, byte(id), uint8(v.Length), byte(v.Value >> 16), byte(v.Value >> 8), byte(v.Value)})
@@ -150,25 +278,83 @@ func (t *Client) RequestSecurityAccess(ctx context.Context, force bool) (bool, e
 	if t.gotSequrityAccess && !force {
 		return true, nil
 	}
-	for i := 1; i <= 2; i++ {
-		ok, err := t.requestSecurityAccessLevel(ctx, i)
+	for i := 0; i <= 4; i++ {
+		ok, err := t.letMeIn(ctx, i)
 		if err != nil {
-			return false, err
+			log.Printf("/!\\ Failed to obtain security access: %v", err)
+			time.Sleep(3 * time.Second)
+			continue
 		}
 		if ok {
 			t.gotSequrityAccess = true
-
-			break
+			return true, nil
 		}
 	}
 
-	return false, errors.New("security access was not granted")
+	return false, errors.New("RequestSecurityAccess: access was not granted")
 }
 
-func (t *Client) requestSecurityAccessLevel(ctx context.Context, method int) (bool, error) {
-	log.Println("requestSecurityAccessLevel", method)
+func (t *Client) letMeIn(ctx context.Context, method int) (bool, error) {
+	msg := []byte{0x40, 0xA1, 0x02, 0x27, 0x05, 0x00, 0x00, 0x00}
+	msgReply := []byte{0x40, 0xA1, 0x04, 0x27, 0x06, 0x00, 0x00, 0x00}
 
-	return false, nil
+	f, err := t.c.SendAndPoll(ctx, gocan.NewFrame(REQ_MSG_ID, msg, gocan.ResponseRequired), t.defaultTimeout, t.responseID)
+	if err != nil {
+		return false, fmt.Errorf("request seed: %v", err)
+
+	}
+	d := f.Data()
+	t.Ack(d[0], gocan.ResponseRequired)
+
+	s := int(d[5])<<8 | int(d[6])
+	k := calcen(s, method)
+
+	msgReply[5] = byte(int(k) >> 8 & int(0xFF))
+	msgReply[6] = byte(k) & 0xFF
+
+	f2, err := t.c.SendAndPoll(ctx, gocan.NewFrame(REQ_MSG_ID, msgReply, gocan.ResponseRequired), t.defaultTimeout, t.responseID)
+	if err != nil {
+		return false, fmt.Errorf("send seed: %v", err)
+
+	}
+	d2 := f2.Data()
+	t.Ack(d2[0], gocan.ResponseRequired)
+	if d2[3] == 0x67 && d2[5] == 0x34 {
+		return true, nil
+	} else {
+		log.Println(f2.String())
+		return false, errors.New("invalid response")
+	}
+}
+
+// 266h Send acknowledgement, has 0x3F on 3rd!
+func (t *Client) Ack(val byte, typ gocan.CANFrameType) error {
+	ack := []byte{0x40, 0xA1, 0x3F, val & 0xBF, 0x00, 0x00, 0x00, 0x00}
+	return t.c.Send(gocan.NewFrame(0x266, ack, typ))
+}
+
+func calcen(seed int, method int) int {
+	key := seed << 2
+	key &= 0xFFFF
+	switch method {
+	case 0:
+		key ^= 0x8142
+		key -= 0x2356
+	case 1:
+		key ^= 0x4081
+		key -= 0x1F6F
+	case 2:
+		key ^= 0x3DC
+		key -= 0x2356
+	case 3:
+		key ^= 0x3D7
+		key -= 0x2356
+	case 4:
+		key ^= 0x409
+		key -= 0x2356
+	}
+	key &= 0xFFFF
+	return key
 }
 
 func (t *Client) SendRequest(req *KWPRequest) (*KWPReply, error) {
@@ -217,4 +403,65 @@ func (t *Client) splitRequest(payload []byte) []gocan.CANFrame {
 	}
 
 	return results
+}
+
+func (t *Client) recvData(ctx context.Context, length int) ([]byte, error) {
+	var receivedBytes, payloadLeft int
+	out := bytes.NewBuffer([]byte{})
+
+	sub := t.c.Subscribe(ctx, t.responseID)
+	startTransfer := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, 0x21, 0xF0, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
+	if err := t.c.Send(startTransfer); err != nil {
+		return nil, err
+	}
+
+outer:
+	for receivedBytes < length {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(t.defaultTimeout * 4):
+			return nil, fmt.Errorf("timeout")
+
+		case f := <-sub:
+			d := f.Data()
+			if d[0]&0x40 == 0x40 {
+				payloadLeft = int(d[2]) - 2 // subtract two non-payload bytes
+
+				if payloadLeft > 0 && receivedBytes < length {
+					out.WriteByte(d[5])
+					receivedBytes++
+					payloadLeft--
+				}
+				if payloadLeft > 0 && receivedBytes < length {
+					out.WriteByte(d[6])
+					receivedBytes++
+					payloadLeft--
+				}
+				if payloadLeft > 0 && receivedBytes < length {
+					out.WriteByte(d[7])
+					receivedBytes++
+					payloadLeft--
+				}
+			} else {
+				for i := 0; i < 6; i++ {
+					if receivedBytes < length {
+						out.WriteByte(d[2+i])
+						receivedBytes++
+						payloadLeft--
+						if payloadLeft == 0 {
+							break
+						}
+					}
+				}
+			}
+			if d[0] == 0x80 || d[0] == 0xC0 {
+				t.Ack(d[0], gocan.Outgoing)
+				break outer
+			} else {
+				t.Ack(d[0], gocan.ResponseRequired)
+			}
+		}
+	}
+	return out.Bytes(), nil
 }

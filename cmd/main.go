@@ -191,7 +191,7 @@ func main() {
 		select {
 		case <-quitChan:
 			log.Println("Exiting...")
-			if err := k.StopSession(ctx, kwp2000.INIT_MSG_ID); err != nil {
+			if err := k.StopSession(ctx); err != nil {
 				log.Println(err)
 			}
 			time.Sleep(250 * time.Millisecond)
