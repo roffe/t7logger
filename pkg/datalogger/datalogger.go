@@ -11,43 +11,47 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2/data/binding"
+	"github.com/avast/retry-go/v4"
 	"github.com/roffe/gocan"
 	"github.com/roffe/t7logger/pkg/kwp2000"
 	"github.com/roffe/t7logger/pkg/sink"
 )
 
 type Client struct {
-	dev            gocan.Adapter
-	variables      *kwp2000.VarDefinitionList
-	quitChan       chan struct{}
-	onMessage      func(string)
-	k              *kwp2000.Client
-	captureCounter binding.Int
-	errorCounter   binding.Int
-	freq           int
-	sink           *sink.Manager
+	dev                   gocan.Adapter
+	variables             *kwp2000.VarDefinitionList
+	quitChan              chan struct{}
+	onMessage             func(string)
+	k                     *kwp2000.Client
+	captureCounter        binding.Int
+	errorCounter          binding.Int
+	errorPerSecondCounter binding.Int
+	freq                  int
+	sink                  *sink.Manager
 }
 
 type Config struct {
-	Dev            gocan.Adapter
-	Variables      *kwp2000.VarDefinitionList
-	Freq           int
-	OnMessage      func(string)
-	CaptureCounter binding.Int
-	ErrorCounter   binding.Int
-	Sink           *sink.Manager
+	Dev                   gocan.Adapter
+	Variables             *kwp2000.VarDefinitionList
+	Freq                  int
+	OnMessage             func(string)
+	CaptureCounter        binding.Int
+	ErrorCounter          binding.Int
+	ErrorPerSecondCounter binding.Int
+	Sink                  *sink.Manager
 }
 
 func New(cfg Config) *Client {
 	return &Client{
-		variables:      cfg.Variables,
-		dev:            cfg.Dev,
-		quitChan:       make(chan struct{}, 1),
-		onMessage:      cfg.OnMessage,
-		captureCounter: cfg.CaptureCounter,
-		errorCounter:   cfg.ErrorCounter,
-		freq:           cfg.Freq,
-		sink:           cfg.Sink,
+		variables:             cfg.Variables,
+		dev:                   cfg.Dev,
+		quitChan:              make(chan struct{}, 1),
+		onMessage:             cfg.OnMessage,
+		captureCounter:        cfg.CaptureCounter,
+		errorCounter:          cfg.ErrorCounter,
+		errorPerSecondCounter: cfg.ErrorPerSecondCounter,
+		freq:                  cfg.Freq,
+		sink:                  cfg.Sink,
 	}
 }
 
@@ -74,93 +78,117 @@ func (c *Client) Start() error {
 
 	ctx := context.Background()
 
-	cl, err := gocan.New(ctx, c.dev)
-	if err != nil {
-		return err
-	}
-	defer cl.Close()
-
-	c.k = kwp2000.New(cl)
-	if err := c.k.StartSession(ctx, kwp2000.INIT_MSG_ID, kwp2000.INIT_RESP_ID); err != nil {
-		return err
-	}
-
-	symbolTable, err := c.k.ReadDataByLocalIdentifier2(ctx, 1)
-	if err != nil {
-		log.Println(err)
-	} else {
-		log.Printf("Symbol table: %X", symbolTable)
-	}
-
-	if err := c.defVars(ctx); err != nil {
-		return err
-	}
-
 	count := 0
 	errCount := 0
-	c.errorCounter.Set(errCount)
+	errPerSecond := 0
+	cps := 0
+	retries := 0
+	err = retry.Do(func() error {
+		cl, err := gocan.New(ctx, c.dev)
+		if err != nil {
+			if retries == 0 {
+				return retry.Unrecoverable(err)
+			}
+			return err
+		}
+		defer cl.Close()
 
-	c.onMessage(fmt.Sprintf("Starting live logging at %d fps", c.freq))
-	select {
-	case <-c.variables.Update():
-	default:
-	}
+		c.k = kwp2000.New(cl)
 
-	//print(strings.Repeat("\r\n", c.variables.Len()))
+		if retries > 0 {
+			c.k.StopSession(ctx)
+			time.Sleep(100 * time.Millisecond)
+		}
 
-	t := time.NewTicker(time.Second / time.Duration(c.freq))
-	//t := time.NewTicker(82 * time.Millisecond)
-	defer t.Stop()
+		if err := c.k.StartSession(ctx, kwp2000.INIT_MSG_ID, kwp2000.INIT_RESP_ID); err != nil {
+			if retries == 0 {
+				return retry.Unrecoverable(err)
+			}
+			return err
+		}
+		defer c.k.StopSession(ctx)
+		c.onMessage("Connected to ECU")
 
-	for {
+		if err := c.defVars(ctx); err != nil {
+			errz := fmt.Errorf("failed to define variables: %w", err)
+			if retries == 0 {
+				return retry.Unrecoverable(errz)
+			}
+			return errz
+		}
+		c.onMessage("Variables defined")
+
+		c.errorCounter.Set(errCount)
+
 		select {
 		case <-c.variables.Update():
-			if err := c.defVars(ctx); err != nil {
-				return err
-			}
-			time.Sleep(50 * time.Millisecond)
-		case <-c.quitChan:
-			c.onMessage("Stop logging...")
-			//if err := c.k.StopSession(ctx, kwp2000.INIT_MSG_ID); err != nil {
-			//	log.Println(err)
-			//}
-			//time.Sleep(50 * time.Millisecond)
-			return nil
-		case <-t.C:
-			data, err := c.k.ReadDataByLocalIdentifier(ctx, 0xF0)
-			if err != nil {
-				errCount++
-				c.errorCounter.Set(errCount)
-				c.onMessage(fmt.Sprintf("Failed to read data: %v", err))
-				continue
-			}
-			r := bytes.NewReader(data)
-			//print(strings.Repeat("\033[A", c.variables.Len()))
-			for _, va := range c.variables.Get() {
-				if err := va.Read(r); err != nil {
-					c.onMessage(fmt.Sprintf("Failed to read %s: %v", va.Name, err))
-					break
-				}
-			}
+		default:
+		}
+		secondTicker := time.NewTicker(time.Second)
+		defer secondTicker.Stop()
 
-			if r.Len() > 0 {
-				left := r.Len()
-				leftovers := make([]byte, r.Len())
-				n, err := r.Read(leftovers)
+		t := time.NewTicker(time.Second / time.Duration(c.freq))
+		defer t.Stop()
+
+		c.onMessage(fmt.Sprintf("Live logging at %d fps", c.freq))
+		for {
+			select {
+			case <-c.variables.Update():
+				if err := c.defVars(ctx); err != nil {
+					return err
+				}
+				time.Sleep(100 * time.Millisecond)
+			case <-c.quitChan:
+				c.onMessage("Stop logging...")
+				return nil
+			case <-secondTicker.C: // every time the ticker ticks
+				log.Println("cps:", cps)
+				cps = 0
+				c.errorPerSecondCounter.Set(errPerSecond)
+				if errPerSecond > 10 {
+					errPerSecond = 0
+					return fmt.Errorf("too many errors, restarting logging")
+				}
+				errPerSecond = 0
+			case <-t.C:
+				data, err := c.k.ReadDataByLocalIdentifier(ctx, 0xF0)
 				if err != nil {
-					c.onMessage(fmt.Sprintf("Failed to read leftovers: %v", err))
+					errCount++
+					errPerSecond++
+					c.errorCounter.Set(errCount)
+					c.onMessage(fmt.Sprintf("Failed to read data: %v", err))
+					continue
 				}
-				c.onMessage(fmt.Sprintf("leftovers %d: %X", left, leftovers[:n]))
-			}
-
-			c.produceLogLine(file, c.variables.Get())
-			count++
-			if err := c.captureCounter.Set(count); err != nil {
-				c.onMessage(fmt.Sprintf("Failed to set capture counter: %v", err))
+				r := bytes.NewReader(data)
+				for _, va := range c.variables.Get() {
+					if err := va.Read(r); err != nil {
+						c.onMessage(fmt.Sprintf("Failed to read %s: %v", va.Name, err))
+						break
+					}
+				}
+				if r.Len() > 0 {
+					left := r.Len()
+					leftovers := make([]byte, r.Len())
+					n, err := r.Read(leftovers)
+					if err != nil {
+						c.onMessage(fmt.Sprintf("Failed to read leftovers: %v", err))
+					}
+					c.onMessage(fmt.Sprintf("leftovers %d: %X", left, leftovers[:n]))
+				}
+				c.produceLogLine(file, c.variables.Get())
+				count++
+				cps++
+				c.captureCounter.Set(count)
 			}
 		}
-	}
-
+	},
+		retry.Attempts(100),
+		retry.OnRetry(func(n uint, err error) {
+			retries++
+			c.onMessage(fmt.Sprintf("Retry %d: %v", n, err))
+		}),
+	)
+	return err
 }
 
 func (c *Client) defVars(ctx context.Context) error {

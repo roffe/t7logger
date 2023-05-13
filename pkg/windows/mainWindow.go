@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -44,10 +45,11 @@ type MainWindow struct {
 	logBtn  *widget.Button
 	mockBtn *widget.Button
 
-	captureCounter binding.Int
-	errorCounter   binding.Int
-	freqValue      binding.Float
-	progressBar    *widget.ProgressBarInfinite
+	captureCounter        binding.Int
+	errorCounter          binding.Int
+	errorPerSecondCounter binding.Int
+	freqValue             binding.Float
+	progressBar           *widget.ProgressBarInfinite
 
 	freqSlider *widget.Slider
 
@@ -58,25 +60,42 @@ type MainWindow struct {
 
 	dlc  *datalogger.Client
 	vars *kwp2000.VarDefinitionList
+
+	debuglog *os.File
 }
 
 func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitionList) *MainWindow {
 	mw := &MainWindow{
-		Window:         a.NewWindow("Trionic7 Logger - No file loaded"),
-		app:            a,
-		symbolMap:      make(map[string]*kwp2000.VarDefinition),
-		outputData:     binding.NewStringList(),
-		canSettings:    widgets.NewCanSettingsWidget(a),
-		captureCounter: binding.NewInt(),
-		errorCounter:   binding.NewInt(),
-		freqValue:      binding.NewFloat(),
-		progressBar:    widget.NewProgressBarInfinite(),
-		sinkManager:    singMgr,
-		vars:           vars,
+		Window:                a.NewWindow("Trionic7 Logger - No file loaded"),
+		app:                   a,
+		symbolMap:             make(map[string]*kwp2000.VarDefinition),
+		outputData:            binding.NewStringList(),
+		canSettings:           widgets.NewCanSettingsWidget(a),
+		captureCounter:        binding.NewInt(),
+		errorCounter:          binding.NewInt(),
+		errorPerSecondCounter: binding.NewInt(),
+		freqValue:             binding.NewFloat(),
+		progressBar:           widget.NewProgressBarInfinite(),
+		sinkManager:           singMgr,
+		vars:                  vars,
 	}
+
+	f, err := os.OpenFile("debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err == nil {
+		mw.debuglog = f
+	}
+
+	mw.Window.SetCloseIntercept(func() {
+		if mw.debuglog != nil {
+			mw.debuglog.Sync()
+			mw.debuglog.Close()
+		}
+		mw.Close()
+	})
+
 	mw.progressBar.Stop()
 
-	mw.freqSlider = widget.NewSliderWithData(1, 50, mw.freqValue)
+	mw.freqSlider = widget.NewSliderWithData(1, 120, mw.freqValue)
 	mw.freqSlider.SetValue(25)
 
 	mw.output = mw.newOutputList()
@@ -169,7 +188,7 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 		container.NewVBox(
 			container.NewGridWithColumns(4,
 				widget.NewButtonWithIcon("Load config", theme.FileIcon(), func() {
-					filename, err := sdialog.File().Filter("Config file", "json").Load()
+					filename, err := sdialog.File().Filter("*.json", "json").Load()
 					if err != nil {
 						if err.Error() == "Cancelled" {
 							return
@@ -196,7 +215,7 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 				}),
 				widget.NewButtonWithIcon("Save config", theme.DocumentSaveIcon(), func() {
 
-					filename, err := sdialog.File().Filter("Config file", "json").Save()
+					filename, err := sdialog.File().Filter("*.json", "json").Save()
 					if err != nil {
 						if err.Error() == "Cancelled" {
 							return
@@ -238,6 +257,15 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 		}
 	}))
 
+	errorPerSecondCounter := widget.NewLabel("")
+	errorPerSecondCounter.Alignment = fyne.TextAlignLeading
+
+	mw.errorPerSecondCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.errorPerSecondCounter.Get(); err == nil {
+			errorPerSecondCounter.SetText(fmt.Sprintf("Err/s: %d", val))
+		}
+	}))
+
 	freqValue := widget.NewLabel("")
 
 	mw.freqValue.AddListener(binding.NewDataListener(func() {
@@ -265,9 +293,10 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 				Trailing: container.NewVBox(
 					mw.mockBtn,
 					mw.freqSlider,
-					container.NewGridWithColumns(3,
+					container.NewGridWithColumns(4,
 						capturedCounter,
 						errorCounter,
+						errorPerSecondCounter,
 						freqValue,
 					),
 				),
@@ -318,6 +347,9 @@ func (mw *MainWindow) openBrowser(url string) {
 }
 
 func (mw *MainWindow) writeOutput(s string) {
+	if mw.debuglog != nil {
+		mw.debuglog.WriteString(time.Now().Format("2006-01-02 15:04:05.000") + " " + s + "\n")
+	}
 	mw.outputData.Append(s)
 	mw.output.ScrollToBottom()
 }

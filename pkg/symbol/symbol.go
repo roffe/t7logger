@@ -101,7 +101,7 @@ func ExtractFile(filename string, languageID int, m_current_softwareversion stri
 		}
 	} else {
 		log.Println("Binary packed version")
-		return binaryPacked(file)
+		return BinaryPacked(file)
 
 	}
 	return nil, errors.New("not implemented")
@@ -116,17 +116,22 @@ func nonBinaryPacked(file *os.File, fstats fs.FileInfo) error {
 	return nil
 }
 
-func binaryPacked(file *os.File) ([]*Symbol, error) {
+func BinaryPacked(file io.ReadSeeker) ([]*Symbol, error) {
 	compr_created, addressTableOffset, compressedSymbolTable, err := extractCompressedSymbolTable(file)
 	if err != nil {
 		return nil, err
 	}
 
-	//os.WriteFile("compressedSymbolTable.bin", compressedSymbolTable, 0644)
+	os.WriteFile("compressedSymbolNameTable.bin", compressedSymbolTable, 0644)
 	if addressTableOffset == -1 {
 		return nil, errors.New("could not find addressTableOffset table")
 	}
 
+	ff, err := os.Create("compressedSymbolTable.bin")
+	if err != nil {
+		return nil, err
+	}
+	defer ff.Close()
 	file.Seek(int64(addressTableOffset), io.SeekStart)
 	symb_count := 0
 
@@ -141,7 +146,7 @@ func binaryPacked(file *os.File) ([]*Symbol, error) {
 		if n != 10 {
 			return nil, errors.New("binaryPacked: not enough bytes read")
 		}
-
+		ff.Write(buff)
 		if int32(buff[0]) != 0x53 && int32(buff[1]) != 0x43 { // SC
 			symbols = append(symbols, NewFromData(buff, symb_count))
 			symb_count++
@@ -157,7 +162,7 @@ func binaryPacked(file *os.File) ([]*Symbol, error) {
 
 	if compr_created {
 		log.Println("Decoding packed symbol table")
-		symbolNames, err := expandCompressedSymbolNames(compressedSymbolTable)
+		symbolNames, err := ExpandCompressedSymbolNames(compressedSymbolTable)
 		if err != nil {
 			return nil, err
 		}
@@ -168,14 +173,14 @@ func binaryPacked(file *os.File) ([]*Symbol, error) {
 		}
 	}
 
-	ff, err := os.OpenFile("symbols.txt", os.O_CREATE|os.O_WRONLY, 0644)
+	ff2, err := os.OpenFile("symbols.txt", os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
 	defer ff.Close()
 
 	for _, s := range symbols {
-		ff.WriteString(fmt.Sprintf("%s\n", s.String()))
+		ff2.WriteString(fmt.Sprintf("%s\n", s.String()))
 	}
 	return symbols, nil
 
@@ -188,7 +193,7 @@ var searchPattern = []byte{
 	0x20, 0x00,
 }
 
-func expandCompressedSymbolNames(in []byte) ([]string, error) {
+func ExpandCompressedSymbolNames(in []byte) ([]string, error) {
 	var expandedFileSize int
 	for i := 0; i < 4; i++ {
 		expandedFileSize |= int(in[i]) << uint(i*8)
@@ -206,7 +211,7 @@ func expandCompressedSymbolNames(in []byte) ([]string, error) {
 	return strings.Split(string(out), "\r\n"), nil
 }
 
-func extractCompressedSymbolTable(file *os.File) (bool, int, []byte, error) {
+func extractCompressedSymbolTable(file io.ReadSeeker) (bool, int, []byte, error) {
 	addressTableOffset := bytePatternSearch(file, searchPattern, 0x30000) - 0x06
 	log.Printf("Address table offset: %08X", addressTableOffset)
 
@@ -233,7 +238,7 @@ func extractCompressedSymbolTable(file *os.File) (bool, int, []byte, error) {
 	return false, -1, nil, errors.New("ecst: symbol table not found")
 }
 
-func getLengthFromOffset(file *os.File, offset int) int {
+func getLengthFromOffset(file io.ReadSeeker, offset int) int {
 	file.Seek(int64(offset), io.SeekStart)
 	var val uint16
 	if err := binary.Read(file, binary.BigEndian, &val); err != nil {
@@ -242,7 +247,7 @@ func getLengthFromOffset(file *os.File, offset int) int {
 	return int(val)
 }
 
-func getAddressFromOffset(file *os.File, offset int) int {
+func getAddressFromOffset(file io.ReadSeeker, offset int) int {
 	file.Seek(int64(offset), io.SeekStart)
 	var val uint32
 	if err := binary.Read(file, binary.BigEndian, &val); err != nil {

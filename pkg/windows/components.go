@@ -31,13 +31,14 @@ func (mw *MainWindow) newLogBtn() *widget.Button {
 			}
 			logBtn.SetText("Stop logging")
 			mw.dlc = datalogger.New(datalogger.Config{
-				Dev:            device,
-				Variables:      mw.vars,
-				Freq:           int(mw.freqSlider.Value),
-				OnMessage:      mw.writeOutput,
-				CaptureCounter: mw.captureCounter,
-				ErrorCounter:   mw.errorCounter,
-				Sink:           mw.sinkManager,
+				Dev:                   device,
+				Variables:             mw.vars,
+				Freq:                  int(mw.freqSlider.Value),
+				OnMessage:             mw.writeOutput,
+				CaptureCounter:        mw.captureCounter,
+				ErrorCounter:          mw.errorCounter,
+				ErrorPerSecondCounter: mw.errorPerSecondCounter,
+				Sink:                  mw.sinkManager,
 			})
 
 			go func() {

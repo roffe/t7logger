@@ -30,13 +30,6 @@ var public embed.FS
 
 func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList, ready chan struct{}) {
 	<-ready
-	if dd, err := public.ReadDir("."); err == nil {
-		for _, d := range dd {
-			log.Println(d.Name())
-		}
-	} else {
-		log.Fatal(err)
-	}
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
