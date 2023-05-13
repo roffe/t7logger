@@ -9,3 +9,5 @@ tmp2
 *.xml
 *.exe
 *.zip
+debug.log
+*.o

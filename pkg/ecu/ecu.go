@@ -118,6 +118,8 @@ func GetSymbols(ctx context.Context, dev gocan.Adapter, cb func(string)) ([]*sym
 	//log.Println("time to read symbol name table", time.Since(start))
 	cb(fmt.Sprintf("Took %s to load Symbol Names", time.Since(start)))
 
+	//	log.Println("size symbolnames", len(compressedSymbolNameTable))
+
 	symbolNames, err := symbol.ExpandCompressedSymbolNames(compressedSymbolNameTable)
 	if err != nil {
 		return nil, err
@@ -126,10 +128,10 @@ func GetSymbols(ctx context.Context, dev gocan.Adapter, cb func(string)) ([]*sym
 	//log.Println("number of symbols", sym_count)
 	cb(fmt.Sprintf("Loaded: %d symbols from ECU", sym_count))
 
-	for i := range symbols {
-		symbols[i].Name = symbolNames[i]
-		symbols[i].Unit = symbol.GetUnit(symbols[i].Name)
-		symbols[i].Correctionfactor = symbol.GetCorrectionfactor(symbols[i].Name)
+	for i, sym := range symbols {
+		sym.Name = symbolNames[i]
+		sym.Unit = symbol.GetUnit(sym.Name)
+		sym.Correctionfactor = symbol.GetCorrectionfactor(sym.Name)
 	}
 
 	return symbols, nil

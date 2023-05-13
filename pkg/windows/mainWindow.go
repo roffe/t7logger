@@ -117,23 +117,13 @@ func (mw *MainWindow) setTitle(str string) {
 }
 
 func (mw *MainWindow) Layout() fyne.CanvasObject {
-	loadBinBtn := widget.NewButtonWithIcon("Load binary", theme.FileIcon(), func() {
-		filename, err := sdialog.File().Filter("Binary file", "bin").Load()
-		if err != nil {
-			if err.Error() == "Cancelled" {
-				return
-			}
-			dialog.ShowError(err, mw)
-		}
-		mw.loadSymbolsFromFile(filename)
-	})
 
 	left := container.NewBorder(
 		container.NewVBox(
 			container.NewBorder(
 				nil,
 				nil,
-				nil,
+				widget.NewLabel("Symbol lookup"),
 				container.NewHBox(
 					widget.NewButtonWithIcon("Add", theme.ContentAddIcon(), func() {
 						defer mw.symbolConfigList.Refresh()
@@ -147,7 +137,19 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 						mw.vars.Add(s)
 						//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
 					}),
-					loadBinBtn,
+					widget.NewButtonWithIcon("Load from binary", theme.FileIcon(), func() {
+						filename, err := sdialog.File().Filter("Binary file", "bin").Load()
+						if err != nil {
+							if err.Error() == "Cancelled" {
+								return
+							}
+							dialog.ShowError(err, mw)
+						}
+						if err := mw.loadSymbolsFromFile(filename); err != nil {
+							dialog.ShowError(err, mw)
+							return
+						}
+					}),
 					widget.NewButtonWithIcon("Load from ECU", theme.DownloadIcon(), func() {
 						mw.progressBar.Start()
 						defer mw.progressBar.Stop()
@@ -157,7 +159,6 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 						}
 					}),
 				),
-
 				mw.symbolLookup,
 			),
 			container.NewHBox(
@@ -343,6 +344,7 @@ func (mw *MainWindow) loadSymbolsFromECU() error {
 		return err
 	}
 	mw.loadSymbols(symbols)
+	mw.setTitle("Symbols loaded from ECU " + time.Now().Format("2006-01-02 15:04:05.000"))
 	return nil
 }
 

@@ -1,7 +1,5 @@
 package symbol
 
-//#include "lzh.cfile"
-import "C"
 import (
 	"bufio"
 	"encoding/binary"
@@ -13,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"unsafe"
 )
 
@@ -193,19 +192,45 @@ var searchPattern = []byte{
 	0x20, 0x00,
 }
 
+var readNo int
+
 func ExpandCompressedSymbolNames(in []byte) ([]string, error) {
+	if err := os.WriteFile("compressed-"+strconv.Itoa(readNo)+".bin", in, 0644); err != nil {
+		log.Println(err)
+	}
+	readNo++
 	var expandedFileSize int
 	for i := 0; i < 4; i++ {
 		expandedFileSize |= int(in[i]) << uint(i*8)
 	}
 	out := make([]byte, expandedFileSize)
-	r1, err := C.Decode((*C.uchar)(unsafe.Pointer(&in[0])), (*C.uchar)(unsafe.Pointer(&out[0])))
+
+	dll, err := syscall.LoadDLL("lzhuf.dll")
 	if err != nil {
-		return nil, fmt.Errorf("error decoding compressed symbol table: %w", err)
+		log.Println(err)
+		return nil, fmt.Errorf("error loading lzhuf.dll: %w", err)
 	}
-	//outB := C.GoBytes(ptr, (C.int)(r1))
-	if int(r1) != expandedFileSize {
-		return nil, fmt.Errorf("decoded data size missmatch: %d != %d", r1, expandedFileSize)
+	defer dll.Release()
+
+	decode, err := dll.FindProc("Decode")
+	if err != nil {
+		log.Println(err)
+		return nil, fmt.Errorf("error finding Decode in lzhuf.dll: %w", err)
+	}
+
+	r0, r1, err := decode.Call(uintptr(unsafe.Pointer(&in[0])), uintptr(unsafe.Pointer(&out[0])))
+	if r1 == 0 {
+		if err != nil {
+			return nil, fmt.Errorf("error decoding compressed symbol table: %w", err)
+		}
+	}
+
+	if err := os.WriteFile("uncompressed-"+strconv.Itoa(readNo)+".bin", out, 0644); err != nil {
+		log.Println(err)
+	}
+
+	if int(r0) != expandedFileSize {
+		return nil, fmt.Errorf("decoded data size missmatch: %d != %d", r0, expandedFileSize)
 	}
 
 	return strings.Split(string(out), "\r\n"), nil
