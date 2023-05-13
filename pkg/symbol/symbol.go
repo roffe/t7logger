@@ -69,7 +69,7 @@ func NewFromData(data []byte, symb_count int) *Symbol {
 }
 
 func (s *Symbol) String() string {
-	return fmt.Sprintf("%s #%d t:%X @%X len: %d", s.Name, s.Number, s.Type, s.Address, s.Length)
+	return fmt.Sprintf("%s #%d @%08X type: %02X len: %d", s.Name, s.Number, s.Address, s.Type, s.Length)
 }
 
 func LoadSymbols(filename string) ([]*Symbol, error) {

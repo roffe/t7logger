@@ -25,7 +25,6 @@ function getGraphId(symbolData) {
 }
 
 socket.on("metrics", data => {
-    //console.log('metrics', JSON.stringify(data));
     if (typeof (data) === 'string') {
         const split = data.split('|');
         const timestamp = Date.parse(split[0])
@@ -47,7 +46,6 @@ socket.on("symbol_list", data => {
         $('#container').empty();
         graphs = {};
         symbolAssignments = {};
-
         $.each(data, (key, val) => {
             const graphId = getGraphId(val);
             if (!graphs[graphId]) {
@@ -82,7 +80,6 @@ socket.on('connect', () => {
     console.log('Socket connected!');
     $('#loading-spinner').remove();
     clearInterval(redrawInterval);
-
-    socket.emit('list_logs')
+    //socket.emit('list_logs')
     socket.emit('request_symbols');
 });

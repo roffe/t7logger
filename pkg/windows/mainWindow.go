@@ -17,11 +17,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 	xwidget "fyne.io/x/fyne/widget"
 	"github.com/roffe/t7logger/pkg/datalogger"
+	"github.com/roffe/t7logger/pkg/ecu"
 	"github.com/roffe/t7logger/pkg/kwp2000"
 	"github.com/roffe/t7logger/pkg/sink"
 	"github.com/roffe/t7logger/pkg/symbol"
 	"github.com/roffe/t7logger/pkg/widgets"
 	sdialog "github.com/sqweek/dialog"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -146,6 +148,14 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 						//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
 					}),
 					loadBinBtn,
+					widget.NewButtonWithIcon("Load from ECU", theme.DownloadIcon(), func() {
+						mw.progressBar.Start()
+						defer mw.progressBar.Stop()
+						if err := mw.loadSymbolsFromECU(); err != nil {
+							dialog.ShowError(err, mw)
+							return
+						}
+					}),
 				),
 
 				mw.symbolLookup,
@@ -201,7 +211,7 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 					}
 					mw.symbolConfigList.Refresh()
 				}),
-				widget.NewButtonWithIcon("Sync symbols with binary", theme.ViewRefreshIcon(), func() {
+				widget.NewButtonWithIcon("Sync symbols", theme.ViewRefreshIcon(), func() {
 					for i, v := range mw.vars.Get() {
 						for k, vv := range mw.symbolMap {
 							if strings.EqualFold(k, v.Name) {
@@ -209,10 +219,26 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 								break
 							}
 						}
-
 					}
 					mw.symbolConfigList.Refresh()
 				}),
+				//widget.NewButtonWithIcon("Sync symbols with ECU", theme.ViewRestoreIcon(), func() {
+				//	mw.progressBar.Start()
+				//	defer mw.progressBar.Stop()
+				//	if err := mw.loadSymbolsFromECU(); err != nil {
+				//		dialog.ShowError(err, mw)
+				//		return
+				//	}
+				//	for i, v := range mw.vars.Get() {
+				//		for k, vv := range mw.symbolMap {
+				//			if strings.EqualFold(k, v.Name) {
+				//				mw.vars.UpdatePos(i, vv)
+				//				break
+				//			}
+				//		}
+				//	}
+				//	mw.symbolConfigList.Refresh()
+				//}),
 				widget.NewButtonWithIcon("Save config", theme.DocumentSaveIcon(), func() {
 
 					filename, err := sdialog.File().Filter("*.json", "json").Save()
@@ -229,7 +255,6 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 					}
 				}),
 				widget.NewButtonWithIcon("Dashboard", theme.InfoIcon(), func() {
-					//NewDashboard(mw.app).Show()
 					mw.openBrowser("http://localhost:8080")
 				}),
 			),
@@ -306,11 +331,32 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 
 }
 
+func (mw *MainWindow) loadSymbolsFromECU() error {
+	device, err := mw.canSettings.GetAdapter(mw.writeOutput)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	symbols, err := ecu.GetSymbols(ctx, device, mw.writeOutput)
+	if err != nil {
+		return err
+	}
+	mw.loadSymbols(symbols)
+	return nil
+}
+
 func (mw *MainWindow) loadSymbolsFromFile(filename string) error {
 	symbols, err := symbol.LoadSymbols(filename)
 	if err != nil {
 		return fmt.Errorf("error loading symbols: %w", err)
 	}
+	mw.loadSymbols(symbols)
+	mw.setTitle(filename)
+	return nil
+}
+
+func (mw *MainWindow) loadSymbols(symbols []*symbol.Symbol) {
 	newSymbolMap := make(map[string]*kwp2000.VarDefinition)
 	for _, s := range symbols {
 		def := &kwp2000.VarDefinition{
@@ -325,8 +371,6 @@ func (mw *MainWindow) loadSymbolsFromFile(filename string) error {
 		newSymbolMap[s.Name] = def
 	}
 	mw.symbolMap = newSymbolMap
-	mw.setTitle(filename)
-	return nil
 }
 
 func (mw *MainWindow) openBrowser(url string) {

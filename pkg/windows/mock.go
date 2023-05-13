@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/roffe/t7logger/pkg/datalogger"
 	"github.com/roffe/t7logger/pkg/sink"
 )
 
@@ -43,7 +44,7 @@ func (mw *MainWindow) newMockBtn() *widget.Button {
 							//metrics[va.Value] = r.Intn(8000)
 						}
 						mw.sinkManager.Push(&sink.Message{
-							Data: []byte(time.Now().Format("02-01-2006 15:04:05.999") + "|" + strings.Join(ms, ",")),
+							Data: []byte(time.Now().Format(datalogger.ISO8601) + "|" + strings.Join(ms, ",")),
 						})
 						//b, err := json.Marshal(metrics)
 						//if err != nil {
