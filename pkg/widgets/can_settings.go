@@ -15,6 +15,16 @@ import (
 
 var portSpeeds = []string{"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000", "3000000"}
 
+type CanSettingsWidget struct {
+	widget.BaseWidget
+	app             fyne.App
+	objects         []fyne.CanvasObject
+	adapterSelector *widget.Select
+	debugCheckbox   *widget.Check
+	portSelector    *widget.Select
+	speedSelector   *widget.Select
+}
+
 func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 	csw := &CanSettingsWidget{
 		app: app,
@@ -46,7 +56,7 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 				nil,
 				nil,
 				MinWidth(100, widget.NewLabel("Select adapter")),
-				nil,
+				csw.debugCheckbox,
 				csw.adapterSelector,
 			),
 			container.NewBorder(
@@ -72,15 +82,6 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 	return csw
 }
 
-type CanSettingsWidget struct {
-	widget.BaseWidget
-	app             fyne.App
-	objects         []fyne.CanvasObject
-	adapterSelector *widget.Select
-	portSelector    *widget.Select
-	speedSelector   *widget.Select
-}
-
 func (c *CanSettingsWidget) Disable() {
 	c.adapterSelector.Disable()
 	c.portSelector.Disable()
@@ -97,6 +98,7 @@ const (
 	prefsAdapter = "adapter"
 	prefsPort    = "port"
 	prefsSpeed   = "speed"
+	prefsDebug   = "debug"
 )
 
 func (cs *CanSettingsWidget) loadPrefs() {
@@ -108,6 +110,9 @@ func (cs *CanSettingsWidget) loadPrefs() {
 	}
 	if speed := cs.app.Preferences().String(prefsSpeed); speed != "" {
 		cs.speedSelector.SetSelected(speed)
+	}
+	if debug := cs.app.Preferences().Bool(prefsDebug); debug {
+		cs.debugCheckbox.SetChecked(debug)
 	}
 }
 

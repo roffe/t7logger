@@ -80,13 +80,26 @@ func (c *Client) Start() error {
 
 	ctx := context.Background()
 
+	//inHandler := func(msg gocan.CANFrame) {
+	//	log.Println(msg.String())
+	//}
+	//
+	//outHandler := func(msg gocan.CANFrame) {
+	//	log.Println(msg.String())
+	//}
+
 	count := 0
 	errCount := 0
 	errPerSecond := 0
 	cps := 0
 	retries := 0
 	err = retry.Do(func() error {
-		cl, err := gocan.New(ctx, c.dev)
+		cl, err := gocan.NewWithOpts(
+			ctx,
+			c.dev,
+			//gocan.OptOnIncoming(inHandler),
+			//gocan.OptOnOutgoing(outHandler),
+		)
 		if err != nil {
 			if retries == 0 {
 				return retry.Unrecoverable(err)

@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	xwidget "fyne.io/x/fyne/widget"
 	"github.com/roffe/t7logger/pkg/datalogger"
+	"github.com/roffe/t7logger/pkg/debug"
 	"github.com/roffe/t7logger/pkg/ecu"
 	"github.com/roffe/t7logger/pkg/kwp2000"
 	"github.com/roffe/t7logger/pkg/sink"
@@ -69,8 +70,6 @@ type MainWindow struct {
 
 	dlc  *datalogger.Client
 	vars *kwp2000.VarDefinitionList
-
-	debuglog *os.File
 }
 
 func (mw *MainWindow) disableBtns() {
@@ -111,16 +110,8 @@ func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitio
 		vars:                  vars,
 	}
 
-	f, err := os.OpenFile("debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err == nil {
-		mw.debuglog = f
-	}
-
 	mw.Window.SetCloseIntercept(func() {
-		if mw.debuglog != nil {
-			mw.debuglog.Sync()
-			mw.debuglog.Close()
-		}
+		debug.Close()
 		mw.Close()
 	})
 
@@ -425,9 +416,7 @@ func (mw *MainWindow) openBrowser(url string) {
 }
 
 func (mw *MainWindow) writeOutput(s string) {
-	if mw.debuglog != nil {
-		mw.debuglog.WriteString(time.Now().Format("2006-01-02 15:04:05.000") + " " + s + "\n")
-	}
+	debug.Log(s)
 	mw.outputData.Append(s)
 	mw.output.ScrollToBottom()
 }
