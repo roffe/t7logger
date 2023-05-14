@@ -2,6 +2,7 @@ package windows
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -184,6 +185,10 @@ func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitio
 	})
 
 	mw.syncSymbolsBtn = widget.NewButtonWithIcon("Sync symbols", theme.ViewRefreshIcon(), func() {
+		if len(mw.symbolMap) == 0 {
+			dialog.ShowError(errors.New("Load symbols from binary or ECU first"), mw.Window) //lint:ignore ST1005 ignore error
+			return
+		}
 		for i, v := range mw.vars.Get() {
 			for k, vv := range mw.symbolMap {
 				if strings.EqualFold(k, v.Name) {
