@@ -11,8 +11,8 @@ var f *os.File
 func init() {
 	var err error
 	f, err = os.OpenFile("debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err == nil {
-		log.Println("error opening file: %w", err)
+	if err != nil {
+		log.Printf("error opening file: %v", err)
 	}
 }
 
