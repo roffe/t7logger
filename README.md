@@ -14,6 +14,10 @@ Built on top of [goCAN](https://github.com/roffe/gocan) and [Fyne](https://fyne.
 ## Build
     $env:PKG_CONFIG_PATH="C:\vcpkg\packages\libusb_x86-windows\lib\pkgconfig"; $env:CGO_CFLAGS="-IC:\vcpkg\packages\libusb_x86-windows\include\libusb-1.0"; $env:GOARCH=386; $env:CGO_ENABLED=1; fyne package -tags combi --release
 
+## Requirement
+
+CombiAdapter support which depends on libusb requires you to install [vc_redist.x86.exe](https://www.microsoft.com/en-gb/download/confirmation.aspx?id=48145)
+
 ### Benchmarks
 
 #### EU0D T7 @ 25mhz on bench, 14 symbols
