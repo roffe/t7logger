@@ -50,6 +50,10 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 		app.Preferences().SetString(prefsSpeed, s)
 	})
 
+	csw.debugCheckbox = widget.NewCheck("Debug", func(b bool) {
+		app.Preferences().SetBool(prefsDebug, b)
+	})
+
 	csw.objects = []fyne.CanvasObject{
 		container.NewVBox(
 			container.NewBorder(
