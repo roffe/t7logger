@@ -24,6 +24,7 @@ Built on top of [goCAN](https://github.com/roffe/gocan) and [Fyne](https://fyne.
     CombiAdapter 100 - 106 fps
     Mongoose Pro GM II 101 - 106 fps
     STN2120 97 - 103 fps
+    Just4Trionic 19 - 24 fps
 
 ## Screenshots
 ![](t7logger.jpg)
