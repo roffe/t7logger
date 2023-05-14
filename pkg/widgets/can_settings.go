@@ -45,14 +45,14 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 			container.NewBorder(
 				nil,
 				nil,
-				widget.NewLabel("Select adapter"),
+				MinWidth(100, widget.NewLabel("Select adapter")),
 				nil,
 				csw.adapterSelector,
 			),
 			container.NewBorder(
 				nil,
 				nil,
-				widget.NewLabel("Select port"),
+				MinWidth(100, widget.NewLabel("Select port")),
 				widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
 					csw.portSelector.Options = csw.listPorts()
 					csw.portSelector.Refresh()
@@ -62,7 +62,7 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 			container.NewBorder(
 				nil,
 				nil,
-				widget.NewLabel("Select speed"),
+				MinWidth(100, widget.NewLabel("Select speed")),
 				nil,
 				csw.speedSelector,
 			),
@@ -79,6 +79,18 @@ type CanSettingsWidget struct {
 	adapterSelector *widget.Select
 	portSelector    *widget.Select
 	speedSelector   *widget.Select
+}
+
+func (c *CanSettingsWidget) Disable() {
+	c.adapterSelector.Disable()
+	c.portSelector.Disable()
+	c.speedSelector.Disable()
+}
+
+func (c *CanSettingsWidget) Enable() {
+	c.adapterSelector.Enable()
+	c.portSelector.Enable()
+	c.speedSelector.Enable()
 }
 
 const (

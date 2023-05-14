@@ -597,3 +597,20 @@ func (t *Client) ReadMemoryByAddress(ctx context.Context, address, length int) (
 
 	return b, nil
 }
+
+// Reset ECU
+func (t *Client) ResetECU(ctx context.Context) error {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, ECU_RESET, 0x01}, gocan.ResponseRequired)
+	f, err := t.c.SendAndPoll(ctx, frame, t.defaultTimeout, t.responseID)
+	if err != nil {
+		return err
+	}
+	d := f.Data()
+	if d[3] == 0x7F {
+		return fmt.Errorf("failed to reset ECU: %s", TranslateErrorCode(d[5]))
+	}
+	if d[3] != 0x51 || d[4] != 0x81 {
+		return fmt.Errorf("abnormal ecu reset response: %X", d[3:])
+	}
+	return nil
+}

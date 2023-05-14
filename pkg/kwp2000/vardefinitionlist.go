@@ -1,6 +1,8 @@
 package kwp2000
 
-import "github.com/roffe/t7logger/pkg/symbol"
+import (
+	"github.com/roffe/t7logger/pkg/symbol"
+)
 
 type VarDefinitionList struct {
 	data       []*VarDefinition

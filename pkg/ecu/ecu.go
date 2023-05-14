@@ -64,14 +64,14 @@ func GetSymbols(ctx context.Context, dev gocan.Adapter, cb func(string)) ([]*sym
 		return nil, err
 	}
 
-	cb("Loading Symbol Table")
+	cb("Fetching Symbol Table")
 	start := time.Now()
 	symTable, err := k.TransferData(ctx)
 	if err != nil {
 		return nil, err
 	}
-	//log.Println("time to read symbol table", time.Since(start))
-	cb(fmt.Sprintf("Took %s to load Symbol Table", time.Since(start)))
+	// log.Println("time to read symbol table", time.Since(start))
+	// cb(fmt.Sprintf("Took %s to load Symbol Table", time.Since(start)))
 
 	if err := k.RequestTransferExit(ctx); err != nil {
 		return nil, err
@@ -109,30 +109,26 @@ func GetSymbols(ctx context.Context, dev gocan.Adapter, cb func(string)) ([]*sym
 	//}
 	//defer ff.Close()
 
-	cb("Loading Symbol Names")
-	start = time.Now()
+	cb("Fetching Symbol Names")
+
 	compressedSymbolNameTable, err := k.ReadFlash(ctx, int(symbols[0].Address), int(symbols[0].Length))
 	if err != nil {
 		return nil, err
 	}
-	//log.Println("time to read symbol name table", time.Since(start))
-	cb(fmt.Sprintf("Took %s to load Symbol Names", time.Since(start)))
-
-	//	log.Println("size symbolnames", len(compressedSymbolNameTable))
+	// log.Println("time to read symbol name table", time.Since(start))
+	// log.Println("size symbolnames", len(compressedSymbolNameTable))
 
 	symbolNames, err := symbol.ExpandCompressedSymbolNames(compressedSymbolNameTable)
 	if err != nil {
 		return nil, err
 	}
 
-	//log.Println("number of symbols", sym_count)
-	cb(fmt.Sprintf("Loaded: %d symbols from ECU", sym_count))
-
 	for i, sym := range symbols {
 		sym.Name = symbolNames[i]
 		sym.Unit = symbol.GetUnit(sym.Name)
 		sym.Correctionfactor = symbol.GetCorrectionfactor(sym.Name)
 	}
+	cb(fmt.Sprintf("Loaded %d symbols from ECU in %s", sym_count, time.Since(start).Round(time.Millisecond).String()))
 
 	return symbols, nil
 }

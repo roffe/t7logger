@@ -44,8 +44,15 @@ type MainWindow struct {
 
 	canSettings *widgets.CanSettingsWidget
 
-	logBtn  *widget.Button
-	mockBtn *widget.Button
+	addSymbolBtn       *widget.Button
+	logBtn             *widget.Button
+	mockBtn            *widget.Button
+	loadSymbolsEcuBtn  *widget.Button
+	loadSymbolsFileBtn *widget.Button
+
+	loadConfigBtn  *widget.Button
+	saveConfigBtn  *widget.Button
+	syncSymbolsBtn *widget.Button
 
 	captureCounter        binding.Int
 	errorCounter          binding.Int
@@ -64,6 +71,28 @@ type MainWindow struct {
 	vars *kwp2000.VarDefinitionList
 
 	debuglog *os.File
+}
+
+func (mw *MainWindow) disableBtns() {
+	mw.loadConfigBtn.Disable()
+	mw.saveConfigBtn.Disable()
+	mw.syncSymbolsBtn.Disable()
+	mw.loadSymbolsFileBtn.Disable()
+	mw.loadSymbolsEcuBtn.Disable()
+	mw.logBtn.Disable()
+	mw.mockBtn.Disable()
+	mw.canSettings.Disable()
+}
+
+func (mw *MainWindow) enableBtns() {
+	mw.loadConfigBtn.Enable()
+	mw.saveConfigBtn.Enable()
+	mw.syncSymbolsBtn.Enable()
+	mw.loadSymbolsFileBtn.Enable()
+	mw.loadSymbolsEcuBtn.Enable()
+	mw.logBtn.Enable()
+	mw.mockBtn.Enable()
+	mw.canSettings.Enable()
 }
 
 func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitionList) *MainWindow {
@@ -95,6 +124,86 @@ func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitio
 		mw.Close()
 	})
 
+	mw.addSymbolBtn = widget.NewButtonWithIcon("Add", theme.ContentAddIcon(), func() {
+		defer mw.symbolConfigList.Refresh()
+		s, ok := mw.symbolMap[mw.symbolLookup.Text]
+		if !ok {
+			mw.vars.Add(&kwp2000.VarDefinition{
+				Name: mw.symbolLookup.Text,
+			})
+			return
+		}
+		mw.vars.Add(s)
+		//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
+	})
+
+	mw.loadSymbolsFileBtn = widget.NewButtonWithIcon("Load from binary", theme.FileIcon(), func() {
+		filename, err := sdialog.File().Filter("Binary file", "bin").Load()
+		if err != nil {
+			if err.Error() == "Cancelled" {
+				return
+			}
+			dialog.ShowError(err, mw)
+		}
+		if err := mw.loadSymbolsFromFile(filename); err != nil {
+			dialog.ShowError(err, mw)
+			return
+		}
+	})
+
+	mw.loadSymbolsEcuBtn = widget.NewButtonWithIcon("Load from ECU", theme.DownloadIcon(), func() {
+		mw.progressBar.Start()
+		mw.disableBtns()
+		defer mw.enableBtns()
+		defer mw.progressBar.Stop()
+		if err := mw.loadSymbolsFromECU(); err != nil {
+			dialog.ShowError(err, mw)
+			return
+		}
+	})
+
+	mw.loadConfigBtn = widget.NewButtonWithIcon("Load config", theme.FileIcon(), func() {
+		filename, err := sdialog.File().Filter("*.json", "json").Load()
+		if err != nil {
+			if err.Error() == "Cancelled" {
+				return
+			}
+			dialog.ShowError(err, mw)
+		}
+		if err := mw.LoadConfig(filename); err != nil {
+			dialog.ShowError(err, mw)
+			return
+		}
+		mw.symbolConfigList.Refresh()
+	})
+
+	mw.saveConfigBtn = widget.NewButtonWithIcon("Save config", theme.DocumentSaveIcon(), func() {
+		filename, err := sdialog.File().Filter("*.json", "json").Save()
+		if err != nil {
+			if err.Error() == "Cancelled" {
+				return
+			}
+			dialog.ShowError(err, mw)
+		}
+		if err := mw.SaveConfig(filename); err != nil {
+			dialog.ShowError(err, mw)
+			return
+
+		}
+	})
+
+	mw.syncSymbolsBtn = widget.NewButtonWithIcon("Sync symbols", theme.ViewRefreshIcon(), func() {
+		for i, v := range mw.vars.Get() {
+			for k, vv := range mw.symbolMap {
+				if strings.EqualFold(k, v.Name) {
+					mw.vars.UpdatePos(i, vv)
+					break
+				}
+			}
+		}
+		mw.symbolConfigList.Refresh()
+	})
+
 	mw.progressBar.Stop()
 
 	mw.freqSlider = widget.NewSliderWithData(1, 120, mw.freqValue)
@@ -117,6 +226,40 @@ func (mw *MainWindow) setTitle(str string) {
 }
 
 func (mw *MainWindow) Layout() fyne.CanvasObject {
+	capturedCounter := widget.NewLabel("")
+	capturedCounter.Alignment = fyne.TextAlignLeading
+
+	errorCounter := widget.NewLabel("")
+	errorCounter.Alignment = fyne.TextAlignLeading
+
+	mw.captureCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.captureCounter.Get(); err == nil {
+			capturedCounter.SetText(fmt.Sprintf("Cap: %d", val))
+		}
+	}))
+
+	mw.errorCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.errorCounter.Get(); err == nil {
+			errorCounter.SetText(fmt.Sprintf("Err: %d", val))
+		}
+	}))
+
+	errorPerSecondCounter := widget.NewLabel("")
+	errorPerSecondCounter.Alignment = fyne.TextAlignLeading
+
+	mw.errorPerSecondCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.errorPerSecondCounter.Get(); err == nil {
+			errorPerSecondCounter.SetText(fmt.Sprintf("Err/s: %d", val))
+		}
+	}))
+
+	freqValue := widget.NewLabel("")
+
+	mw.freqValue.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.freqValue.Get(); err == nil {
+			freqValue.SetText(fmt.Sprintf("Freq: %0.f", val))
+		}
+	}))
 
 	left := container.NewBorder(
 		container.NewVBox(
@@ -125,39 +268,9 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 				nil,
 				widget.NewLabel("Symbol lookup"),
 				container.NewHBox(
-					widget.NewButtonWithIcon("Add", theme.ContentAddIcon(), func() {
-						defer mw.symbolConfigList.Refresh()
-						s, ok := mw.symbolMap[mw.symbolLookup.Text]
-						if !ok {
-							mw.vars.Add(&kwp2000.VarDefinition{
-								Name: mw.symbolLookup.Text,
-							})
-							return
-						}
-						mw.vars.Add(s)
-						//log.Printf("Name: %s, Method: %d, Value: %d, Type: %X", s.Name, s.Method, s.Value, s.Type)
-					}),
-					widget.NewButtonWithIcon("Load from binary", theme.FileIcon(), func() {
-						filename, err := sdialog.File().Filter("Binary file", "bin").Load()
-						if err != nil {
-							if err.Error() == "Cancelled" {
-								return
-							}
-							dialog.ShowError(err, mw)
-						}
-						if err := mw.loadSymbolsFromFile(filename); err != nil {
-							dialog.ShowError(err, mw)
-							return
-						}
-					}),
-					widget.NewButtonWithIcon("Load from ECU", theme.DownloadIcon(), func() {
-						mw.progressBar.Start()
-						defer mw.progressBar.Stop()
-						if err := mw.loadSymbolsFromECU(); err != nil {
-							dialog.ShowError(err, mw)
-							return
-						}
-					}),
+					mw.addSymbolBtn,
+					mw.loadSymbolsFileBtn,
+					mw.loadSymbolsEcuBtn,
 				),
 				mw.symbolLookup,
 			),
@@ -198,107 +311,26 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 		),
 		container.NewVBox(
 			container.NewGridWithColumns(4,
-				widget.NewButtonWithIcon("Load config", theme.FileIcon(), func() {
-					filename, err := sdialog.File().Filter("*.json", "json").Load()
-					if err != nil {
-						if err.Error() == "Cancelled" {
-							return
-						}
-						dialog.ShowError(err, mw)
-					}
-					if err := mw.LoadConfig(filename); err != nil {
-						dialog.ShowError(err, mw)
-						return
-					}
-					mw.symbolConfigList.Refresh()
-				}),
-				widget.NewButtonWithIcon("Sync symbols", theme.ViewRefreshIcon(), func() {
-					for i, v := range mw.vars.Get() {
-						for k, vv := range mw.symbolMap {
-							if strings.EqualFold(k, v.Name) {
-								mw.vars.UpdatePos(i, vv)
-								break
-							}
-						}
-					}
-					mw.symbolConfigList.Refresh()
-				}),
-				//widget.NewButtonWithIcon("Sync symbols with ECU", theme.ViewRestoreIcon(), func() {
-				//	mw.progressBar.Start()
-				//	defer mw.progressBar.Stop()
-				//	if err := mw.loadSymbolsFromECU(); err != nil {
-				//		dialog.ShowError(err, mw)
-				//		return
-				//	}
-				//	for i, v := range mw.vars.Get() {
-				//		for k, vv := range mw.symbolMap {
-				//			if strings.EqualFold(k, v.Name) {
-				//				mw.vars.UpdatePos(i, vv)
-				//				break
-				//			}
-				//		}
-				//	}
-				//	mw.symbolConfigList.Refresh()
-				//}),
-				widget.NewButtonWithIcon("Save config", theme.DocumentSaveIcon(), func() {
-
-					filename, err := sdialog.File().Filter("*.json", "json").Save()
-					if err != nil {
-						if err.Error() == "Cancelled" {
-							return
-						}
-						dialog.ShowError(err, mw)
-					}
-					if err := mw.SaveConfig(filename); err != nil {
-						dialog.ShowError(err, mw)
-						return
-
-					}
-				}),
+				mw.loadConfigBtn,
+				mw.syncSymbolsBtn,
+				mw.saveConfigBtn,
 				widget.NewButtonWithIcon("Dashboard", theme.InfoIcon(), func() {
 					mw.openBrowser("http://localhost:8080")
 				}),
+				//widget.NewButton("?", func() {
+				//	b, err := json.MarshalIndent(mw.symbolMap, "", "  ")
+				//	if err != nil {
+				//		dialog.ShowError(err, mw)
+				//		return
+				//	}
+				//	log.Println(string(b))
+				//}),
 			),
 		),
 		nil,
 		nil,
 		mw.symbolConfigList,
 	)
-
-	capturedCounter := widget.NewLabel("")
-	capturedCounter.Alignment = fyne.TextAlignLeading
-
-	errorCounter := widget.NewLabel("")
-	errorCounter.Alignment = fyne.TextAlignLeading
-
-	mw.captureCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.captureCounter.Get(); err == nil {
-			capturedCounter.SetText(fmt.Sprintf("Cap: %d", val))
-		}
-	}))
-
-	mw.errorCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.errorCounter.Get(); err == nil {
-			errorCounter.SetText(fmt.Sprintf("Err: %d", val))
-		}
-	}))
-
-	errorPerSecondCounter := widget.NewLabel("")
-	errorPerSecondCounter.Alignment = fyne.TextAlignLeading
-
-	mw.errorPerSecondCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.errorPerSecondCounter.Get(); err == nil {
-			errorPerSecondCounter.SetText(fmt.Sprintf("Err/s: %d", val))
-		}
-	}))
-
-	freqValue := widget.NewLabel("")
-
-	mw.freqValue.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.freqValue.Get(); err == nil {
-			freqValue.SetText(fmt.Sprintf("Freq: %0.f", val))
-		}
-	}))
 
 	return &container.Split{
 		Offset:     0.6,
@@ -349,7 +381,7 @@ func (mw *MainWindow) loadSymbolsFromECU() error {
 }
 
 func (mw *MainWindow) loadSymbolsFromFile(filename string) error {
-	symbols, err := symbol.LoadSymbols(filename)
+	symbols, err := symbol.LoadSymbols(filename, mw.writeOutput)
 	if err != nil {
 		return fmt.Errorf("error loading symbols: %w", err)
 	}

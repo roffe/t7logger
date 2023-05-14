@@ -118,7 +118,7 @@ func (c *Client) Start() error {
 			}
 			return errz
 		}
-		c.onMessage("Variables defined")
+		//c.onMessage("Variables defined")
 
 		c.errorCounter.Set(errCount)
 
