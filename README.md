@@ -25,7 +25,6 @@ Built on top of [goCAN](https://github.com/roffe/gocan) and [Fyne](https://fyne.
     Mongoose Pro GM II 101 - 106 fps
     STN2120 97 - 103 fps
 
-
 ## Screenshots
 ![](t7logger.jpg)
 ![](t7logger1.jpg)
