@@ -29,7 +29,6 @@ type VarDefinitionWidget struct {
 
 func NewVarDefinitionWidget(ls *widget.List, definedVars *kwp2000.VarDefinitionList) fyne.Widget {
 	vd := &VarDefinitionWidget{}
-
 	vd.symbolName = &widget.Entry{
 		PlaceHolder: strings.Repeat(" ", 30),
 		OnChanged: func(s string) {
@@ -122,12 +121,11 @@ func (d *diagonal) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	var h float32
 	for _, o := range objects {
 		childSize := o.MinSize()
-		//w += childSize.Width
 		if childSize.Height > h {
 			h = childSize.Height
 		}
 	}
-	return fyne.NewSize(d.width+theme.Padding()*2, h)
+	return fyne.NewSize(d.width+(theme.Padding()*2), h)
 }
 
 func (d *diagonal) Layout(objects []fyne.CanvasObject, containerSize fyne.Size) {
@@ -149,6 +147,29 @@ func (wb *VarDefinitionWidget) Update(pos int, sym *kwp2000.VarDefinition) {
 	wb.symbolSigned.SetChecked(sym.Type&kwp2000.SIGNED != 0)
 	wb.symbolGroup.SetText(sym.Group)
 	wb.symbolCorrectionfactor.SetText(sym.Correctionfactor)
+	sym.SetWidget(wb)
+}
+
+func (wb *VarDefinitionWidget) Disable() {
+	wb.symbolName.Disable()
+	wb.symbolMethod.Disable()
+	wb.symbolNumber.Disable()
+	wb.symbolType.Disable()
+	wb.symbolSigned.Disable()
+	wb.symbolGroup.Disable()
+	wb.symbolCorrectionfactor.Disable()
+	wb.symbolDeleteBTN.Disable()
+}
+
+func (wb *VarDefinitionWidget) Enable() {
+	wb.symbolName.Enable()
+	wb.symbolMethod.Enable()
+	wb.symbolNumber.Enable()
+	wb.symbolType.Enable()
+	wb.symbolSigned.Enable()
+	wb.symbolGroup.Enable()
+	wb.symbolCorrectionfactor.Enable()
+	wb.symbolDeleteBTN.Enable()
 }
 
 func (wb *VarDefinitionWidget) SetName(name string) {

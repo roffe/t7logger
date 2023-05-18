@@ -2,11 +2,14 @@ package dashboard
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
+	"runtime"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -28,10 +31,28 @@ type SymbolDefinition struct {
 //go:embed public
 var public embed.FS
 
-func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList, ready chan struct{}) {
+func Launch() error {
+	return openBrowser("http://localhost:8080")
+}
+
+func openBrowser(url string) error {
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+	return err
+}
+
+func Start(logFn func(string), releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinitionList, ready chan struct{}) {
 	<-ready
 	router := gin.Default()
-
 	router.Use(cors.New(cors.Config{
 		//AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST"},
@@ -48,18 +69,20 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 	server := socketio.NewServer(nil)
 
 	server.OnError("/", func(s socketio.Conn, e error) {
-		log.Println("socket.io error:", e)
+		//log.Println("socket.io error:", e)
+		//logFn(fmt.Sprintf("socket.io error: %s", e))
 	})
 
 	server.OnConnect("/", func(s socketio.Conn) error {
 		s.SetContext("")
-		log.Println("socket.io connected:", s.ID())
+		//log.Println("socket.io connected:", s.ID())
+		//logFn("socket.io connected: " + s.ID())
 		return nil
 	})
 
-	server.OnDisconnect("/", func(s socketio.Conn, reason string) {
-		log.Println("closed", reason)
-	})
+	//server.OnDisconnect("/", func(s socketio.Conn, reason string) {
+	//	log.Println("closed", reason)
+	//})
 
 	server.OnEvent("/", "end_session", func(s socketio.Conn) {
 		s.Leave("metrics")
@@ -99,7 +122,8 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 
 	go func() {
 		if err := server.Serve(); err != nil {
-			log.Fatalf("socket.io listen error: %s\n", err)
+			//log.Fatalf("socket.io listen error: %s\n", err)
+			logFn(fmt.Sprintf("socket.io listen error: %s\n", err))
 		}
 	}()
 	defer server.Close()
@@ -118,7 +142,9 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 	} else {
 		subFS, err := fs.Sub(public, "public")
 		if err != nil {
-			log.Fatal(err)
+			//log.Fatal(err)
+			logFn(fmt.Sprintf("failed to read embedded FS: %s", err))
+			return
 		}
 		router.Use(static.Serve("/", &HttpFileSystem{
 			FileSystem: http.FS(subFS),
@@ -133,7 +159,8 @@ func StartWebserver(releaseMode bool, sm *sink.Manager, vars *kwp2000.VarDefinit
 
 	// Start webserver
 	if err := router.Run(":8080"); err != nil {
-		log.Fatal("failed run app: ", err)
+		//log.Fatal("failed run app: ", err)
+		logFn(err.Error())
 	}
 }
 

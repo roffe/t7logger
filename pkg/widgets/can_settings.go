@@ -23,6 +23,7 @@ type CanSettingsWidget struct {
 	debugCheckbox   *widget.Check
 	portSelector    *widget.Select
 	speedSelector   *widget.Select
+	refreshBtn      *widget.Button
 }
 
 func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
@@ -54,6 +55,11 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 		app.Preferences().SetBool(prefsDebug, b)
 	})
 
+	csw.refreshBtn = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		csw.portSelector.Options = csw.listPorts()
+		csw.portSelector.Refresh()
+	})
+
 	csw.objects = []fyne.CanvasObject{
 		container.NewVBox(
 			container.NewBorder(
@@ -67,10 +73,7 @@ func NewCanSettingsWidget(app fyne.App) *CanSettingsWidget {
 				nil,
 				nil,
 				MinWidth(100, widget.NewLabel("Select port")),
-				widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
-					csw.portSelector.Options = csw.listPorts()
-					csw.portSelector.Refresh()
-				}),
+				csw.refreshBtn,
 				csw.portSelector,
 			),
 			container.NewBorder(
@@ -90,12 +93,16 @@ func (c *CanSettingsWidget) Disable() {
 	c.adapterSelector.Disable()
 	c.portSelector.Disable()
 	c.speedSelector.Disable()
+	c.debugCheckbox.Disable()
+	c.refreshBtn.Disable()
 }
 
 func (c *CanSettingsWidget) Enable() {
 	c.adapterSelector.Enable()
 	c.portSelector.Enable()
 	c.speedSelector.Enable()
+	c.debugCheckbox.Enable()
+	c.refreshBtn.Enable()
 }
 
 const (

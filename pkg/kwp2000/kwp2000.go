@@ -110,8 +110,8 @@ func (t *Client) RequestRoutineResultsByLocalIdentifier(ctx context.Context, id 
 	return d, nil
 }
 
-func (t *Client) ReadDataByLocalIdentifier2(ctx context.Context, id byte) ([]byte, error) {
-	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x02, 0x50, id, 0x00, 0x00, 0x00}, gocan.ResponseRequired)
+func (t *Client) ReadDataByLocalIdentifier2(ctx context.Context, id, mode byte) ([]byte, error) {
+	frame := gocan.NewFrame(REQ_MSG_ID, []byte{0x40, 0xA1, 0x03, READ_DATA_BY_LOCAL_IDENTIFIER, id, mode}, gocan.ResponseRequired)
 	log.Println(frame.String())
 	resp, err := t.c.SendAndPoll(ctx, frame, 250*time.Millisecond, t.responseID)
 	if err != nil {

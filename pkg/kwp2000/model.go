@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"strings"
+
+	"fyne.io/fyne/v2"
 )
 
 var (
@@ -58,10 +60,15 @@ type VarDefinition struct {
 	Correctionfactor string `json:"correctionfactor,omitempty"`
 	Visualization    string `json:"visualization,omitempty"`
 	Group            string `json:"group,omitempty"`
+	Widget           fyne.CanvasObject
 }
 
 func (v *VarDefinition) Set(data []byte) {
 	v.data = data
+}
+
+func (v *VarDefinition) SetWidget(wb fyne.CanvasObject) {
+	v.Widget = wb
 }
 
 func (v *VarDefinition) Read(r io.Reader) error {
@@ -108,7 +115,7 @@ func (v *VarDefinition) GetInt32() int32 {
 func (v *VarDefinition) String() string {
 	if v.Correctionfactor != "" {
 		fs := token.NewFileSet()
-		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%v", v.Decode(), v.Correctionfactor))
+		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%s", v.Decode(), v.Correctionfactor))
 		if err != nil {
 			panic(err)
 		}
@@ -120,7 +127,7 @@ func (v *VarDefinition) String() string {
 func (v *VarDefinition) T7L() string {
 	if v.Correctionfactor != "" {
 		fs := token.NewFileSet()
-		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%v", v.Correctionfactor, v.Decode()))
+		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%s", v.Decode(), v.Correctionfactor))
 		if err != nil {
 			panic(err)
 		}
@@ -132,7 +139,7 @@ func (v *VarDefinition) T7L() string {
 func (v *VarDefinition) Tuple() string {
 	if v.Correctionfactor != "" {
 		fs := token.NewFileSet()
-		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%v", v.Correctionfactor, v.Decode()))
+		tv, err := types.Eval(fs, nil, token.NoPos, fmt.Sprintf("%v*%s", v.Decode(), v.Correctionfactor))
 		if err != nil {
 			panic(err)
 		}

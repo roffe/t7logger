@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/roffe/gocan"
@@ -122,11 +123,10 @@ func GetSymbols(ctx context.Context, dev gocan.Adapter, cb func(string)) ([]*sym
 	if err != nil {
 		return nil, err
 	}
-
-	for i, sym := range symbols {
-		sym.Name = symbolNames[i]
-		sym.Unit = symbol.GetUnit(sym.Name)
-		sym.Correctionfactor = symbol.GetCorrectionfactor(sym.Name)
+	for i := 0; i < len(symbolNames)-1; i++ {
+		symbols[i].Name = strings.TrimSpace(symbolNames[i])
+		symbols[i].Unit = symbol.GetUnit(symbols[i].Name)
+		symbols[i].Correctionfactor = symbol.GetCorrectionfactor(symbols[i].Name)
 	}
 	cb(fmt.Sprintf("Loaded %d symbols from ECU in %s", sym_count, time.Since(start).Round(time.Millisecond).String()))
 

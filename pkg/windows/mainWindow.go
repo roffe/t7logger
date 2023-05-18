@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	xwidget "fyne.io/x/fyne/widget"
+	"github.com/roffe/t7logger/dashboard"
 	"github.com/roffe/t7logger/pkg/datalogger"
 	"github.com/roffe/t7logger/pkg/debug"
 	"github.com/roffe/t7logger/pkg/ecu"
@@ -29,7 +28,8 @@ import (
 )
 
 const (
-	prefsLastConfig = "lastConfig"
+	prefsLastConfig  = "lastConfig"
+	prefsSelectedECU = "lastECU"
 )
 
 type MainWindow struct {
@@ -46,11 +46,14 @@ type MainWindow struct {
 
 	canSettings *widgets.CanSettingsWidget
 
+	ecuSelect *widget.Select
+
 	addSymbolBtn       *widget.Button
 	logBtn             *widget.Button
 	mockBtn            *widget.Button
 	loadSymbolsEcuBtn  *widget.Button
 	loadSymbolsFileBtn *widget.Button
+	dashboardBtn       *widget.Button
 
 	loadConfigBtn  *widget.Button
 	saveConfigBtn  *widget.Button
@@ -64,27 +67,39 @@ type MainWindow struct {
 
 	freqSlider *widget.Slider
 
+	capturedCounterLabel     *widget.Label
+	errorCounterLabel        *widget.Label
+	errPerSecondCounterLabel *widget.Label
+	freqValueLabel           *widget.Label
+
 	sinkManager *sink.Manager
 
 	loggingRunning bool
 	mockRunning    bool
 
-	dlc  *datalogger.Client
+	dlc  datalogger.DataClient
 	vars *kwp2000.VarDefinitionList
 }
 
 func (mw *MainWindow) disableBtns() {
+	mw.addSymbolBtn.Disable()
 	mw.loadConfigBtn.Disable()
 	mw.saveConfigBtn.Disable()
 	mw.syncSymbolsBtn.Disable()
 	mw.loadSymbolsFileBtn.Disable()
 	mw.loadSymbolsEcuBtn.Disable()
-	mw.logBtn.Disable()
+	if !mw.loggingRunning {
+		mw.logBtn.Disable()
+	}
 	mw.mockBtn.Disable()
 	mw.canSettings.Disable()
+	for _, v := range mw.vars.Get() {
+		v.Widget.(*widgets.VarDefinitionWidget).Disable()
+	}
 }
 
 func (mw *MainWindow) enableBtns() {
+	mw.addSymbolBtn.Enable()
 	mw.loadConfigBtn.Enable()
 	mw.saveConfigBtn.Enable()
 	mw.syncSymbolsBtn.Enable()
@@ -93,11 +108,14 @@ func (mw *MainWindow) enableBtns() {
 	mw.logBtn.Enable()
 	mw.mockBtn.Enable()
 	mw.canSettings.Enable()
+	for _, v := range mw.vars.Get() {
+		v.Widget.(*widgets.VarDefinitionWidget).Enable()
+	}
 }
 
 func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitionList) *MainWindow {
 	mw := &MainWindow{
-		Window:                a.NewWindow("Trionic7 Logger - No file loaded"),
+		Window:                a.NewWindow("TrionicLogger"),
 		app:                   a,
 		symbolMap:             make(map[string]*kwp2000.VarDefinition),
 		outputData:            binding.NewStringList(),
@@ -200,142 +218,156 @@ func NewMainWindow(a fyne.App, singMgr *sink.Manager, vars *kwp2000.VarDefinitio
 		mw.symbolConfigList.Refresh()
 	})
 
+	mw.dashboardBtn = widget.NewButtonWithIcon("Dashboard", theme.InfoIcon(), func() {
+		if err := dashboard.Launch(); err != nil {
+			dialog.ShowError(err, mw)
+		}
+	})
+
 	mw.progressBar.Stop()
 
 	mw.freqSlider = widget.NewSliderWithData(1, 120, mw.freqValue)
 	mw.freqSlider.SetValue(25)
 
-	mw.output = mw.newOutputList()
-	mw.symbolLookup = mw.newSymbolnameTypeahead()
-	mw.logBtn = mw.newLogBtn()
-	mw.mockBtn = mw.newMockBtn()
+	mw.newOutputList()
+	mw.newSymbolnameTypeahead()
+	mw.newLogBtn()
+	mw.newMockBtn()
 
-	if filename := mw.app.Preferences().String(prefsLastConfig); filename != "" {
-		mw.LoadConfig(filename)
+	mw.capturedCounterLabel = &widget.Label{
+		Alignment: fyne.TextAlignLeading,
 	}
+	mw.captureCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.captureCounter.Get(); err == nil {
+			mw.capturedCounterLabel.SetText(fmt.Sprintf("Cap: %d", val))
+		}
+	}))
+
+	mw.errorCounterLabel = &widget.Label{
+		Alignment: fyne.TextAlignLeading,
+	}
+	mw.errorCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.errorCounter.Get(); err == nil {
+			mw.errorCounterLabel.SetText(fmt.Sprintf("Err: %d", val))
+		}
+	}))
+
+	mw.errPerSecondCounterLabel = &widget.Label{
+		Alignment: fyne.TextAlignLeading,
+	}
+	mw.errorPerSecondCounter.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.errorPerSecondCounter.Get(); err == nil {
+			mw.errPerSecondCounterLabel.SetText(fmt.Sprintf("Err/s: %d", val))
+		}
+	}))
+
+	mw.freqValueLabel = widget.NewLabel("")
+	mw.freqValue.AddListener(binding.NewDataListener(func() {
+		if val, err := mw.freqValue.Get(); err == nil {
+			mw.freqValueLabel.SetText(fmt.Sprintf("Freq: %0.f", val))
+		}
+	}))
+
+	mw.ecuSelect = widget.NewSelect([]string{"T7", "T8"}, func(s string) {
+		mw.app.Preferences().SetString(prefsSelectedECU, s)
+	})
+
+	mw.loadPrefs()
+	mw.setTitle("No symbols loaded")
 
 	return mw
 }
 
+func (mw *MainWindow) loadPrefs() {
+	if filename := mw.app.Preferences().String(prefsLastConfig); filename != "" {
+		mw.LoadConfig(filename)
+	}
+
+	if ecu := mw.app.Preferences().StringWithFallback(prefsSelectedECU, "T7"); ecu != "" {
+		mw.ecuSelect.SetSelected(ecu)
+	}
+}
+
 func (mw *MainWindow) setTitle(str string) {
-	mw.SetTitle("Trionic7 Logger - " + str)
+	meta := mw.app.Metadata()
+	mw.SetTitle(fmt.Sprintf("Trionic Logger v%s Build %d - %s", meta.Version, meta.Build, str))
 }
 
 func (mw *MainWindow) Layout() fyne.CanvasObject {
-	capturedCounter := widget.NewLabel("")
-	capturedCounter.Alignment = fyne.TextAlignLeading
-
-	errorCounter := widget.NewLabel("")
-	errorCounter.Alignment = fyne.TextAlignLeading
-
-	mw.captureCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.captureCounter.Get(); err == nil {
-			capturedCounter.SetText(fmt.Sprintf("Cap: %d", val))
-		}
-	}))
-
-	mw.errorCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.errorCounter.Get(); err == nil {
-			errorCounter.SetText(fmt.Sprintf("Err: %d", val))
-		}
-	}))
-
-	errorPerSecondCounter := widget.NewLabel("")
-	errorPerSecondCounter.Alignment = fyne.TextAlignLeading
-
-	mw.errorPerSecondCounter.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.errorPerSecondCounter.Get(); err == nil {
-			errorPerSecondCounter.SetText(fmt.Sprintf("Err/s: %d", val))
-		}
-	}))
-
-	freqValue := widget.NewLabel("")
-
-	mw.freqValue.AddListener(binding.NewDataListener(func() {
-		if val, err := mw.freqValue.Get(); err == nil {
-			freqValue.SetText(fmt.Sprintf("Freq: %0.f", val))
-		}
-	}))
-
-	left := container.NewBorder(
-		container.NewVBox(
-			container.NewBorder(
-				nil,
-				nil,
-				widget.NewLabel("Symbol lookup"),
-				container.NewHBox(
-					mw.addSymbolBtn,
-					mw.loadSymbolsFileBtn,
-					mw.loadSymbolsEcuBtn,
-				),
-				mw.symbolLookup,
-			),
-			container.NewHBox(
-				widgets.MinWidth(250, &widget.Label{
-					Text:      "Name",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(90, &widget.Label{
-					Text:      "Method",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(50, &widget.Label{
-					Text:      "#",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(40, &widget.Label{
-					Text:      "Type",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(80, &widget.Label{
-					Text:      "Signed",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(50, &widget.Label{
-					Text:      "Factor",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(130, &widget.Label{
-					Text:      "Group",
-					Alignment: fyne.TextAlignLeading,
-				}),
-				widgets.MinWidth(90, &widget.Label{
-					Text:      "",
-					Alignment: fyne.TextAlignLeading,
-				}),
-			),
-		),
-		container.NewVBox(
-			container.NewGridWithColumns(4,
-				mw.loadConfigBtn,
-				mw.syncSymbolsBtn,
-				mw.saveConfigBtn,
-				widget.NewButtonWithIcon("Dashboard", theme.InfoIcon(), func() {
-					mw.openBrowser("http://localhost:8080")
-				}),
-				//widget.NewButton("?", func() {
-				//	b, err := json.MarshalIndent(mw.symbolMap, "", "  ")
-				//	if err != nil {
-				//		dialog.ShowError(err, mw)
-				//		return
-				//	}
-				//	log.Println(string(b))
-				//}),
-			),
-		),
-		nil,
-		nil,
-		mw.symbolConfigList,
-	)
-
 	return &container.Split{
 		Offset:     0.6,
 		Horizontal: true,
-		Leading:    left,
+		Leading: container.NewBorder(
+			container.NewVBox(
+				container.NewBorder(
+					nil,
+					nil,
+					widget.NewLabel("Symbol lookup"),
+					container.NewHBox(
+						mw.addSymbolBtn,
+						mw.loadSymbolsFileBtn,
+						mw.loadSymbolsEcuBtn,
+					),
+					mw.symbolLookup,
+				),
+				container.NewHBox(
+					widgets.MinWidth(250, &widget.Label{
+						Text:      "Name",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(90, &widget.Label{
+						Text:      "Method",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(50, &widget.Label{
+						Text:      "#",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(40, &widget.Label{
+						Text:      "Type",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(80, &widget.Label{
+						Text:      "Signed",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(50, &widget.Label{
+						Text:      "Factor",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(130, &widget.Label{
+						Text:      "Group",
+						Alignment: fyne.TextAlignLeading,
+					}),
+					widgets.MinWidth(90, &widget.Label{
+						Text:      "",
+						Alignment: fyne.TextAlignLeading,
+					}),
+				),
+			),
+			container.NewVBox(
+				container.NewGridWithColumns(4,
+					mw.loadConfigBtn,
+					mw.syncSymbolsBtn,
+					mw.saveConfigBtn,
+					mw.dashboardBtn,
+				),
+			),
+			nil,
+			nil,
+			mw.symbolConfigList,
+		),
 		Trailing: &container.Split{
 			Offset:     0,
 			Horizontal: false,
 			Leading: container.NewVBox(
+				container.NewBorder(
+					nil,
+					nil,
+					widgets.MinWidth(100, widget.NewLabel("Select ECU")),
+					nil,
+					mw.ecuSelect,
+				),
 				mw.canSettings,
 				mw.logBtn,
 				mw.progressBar,
@@ -348,10 +380,10 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 					mw.mockBtn,
 					mw.freqSlider,
 					container.NewGridWithColumns(4,
-						capturedCounter,
-						errorCounter,
-						errorPerSecondCounter,
-						freqValue,
+						mw.capturedCounterLabel,
+						mw.errorCounterLabel,
+						mw.errPerSecondCounterLabel,
+						mw.freqValueLabel,
 					),
 				),
 			},
@@ -361,13 +393,13 @@ func (mw *MainWindow) Layout() fyne.CanvasObject {
 }
 
 func (mw *MainWindow) loadSymbolsFromECU() error {
-	device, err := mw.canSettings.GetAdapter(mw.writeOutput)
+	device, err := mw.canSettings.GetAdapter(mw.Log)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	symbols, err := ecu.GetSymbols(ctx, device, mw.writeOutput)
+	symbols, err := ecu.GetSymbols(ctx, device, mw.Log)
 	if err != nil {
 		return err
 	}
@@ -377,7 +409,7 @@ func (mw *MainWindow) loadSymbolsFromECU() error {
 }
 
 func (mw *MainWindow) loadSymbolsFromFile(filename string) error {
-	symbols, err := symbol.LoadSymbols(filename, mw.writeOutput)
+	symbols, err := symbol.LoadSymbols(filename, mw.Log)
 	if err != nil {
 		return fmt.Errorf("error loading symbols: %w", err)
 	}
@@ -389,7 +421,7 @@ func (mw *MainWindow) loadSymbolsFromFile(filename string) error {
 func (mw *MainWindow) loadSymbols(symbols []*symbol.Symbol) {
 	newSymbolMap := make(map[string]*kwp2000.VarDefinition)
 	for _, s := range symbols {
-		def := &kwp2000.VarDefinition{
+		newSymbolMap[s.Name] = &kwp2000.VarDefinition{
 			Name:             s.Name,
 			Method:           kwp2000.VAR_METHOD_SYMBOL,
 			Value:            s.Number,
@@ -398,29 +430,11 @@ func (mw *MainWindow) loadSymbols(symbols []*symbol.Symbol) {
 			Correctionfactor: s.Correctionfactor,
 			Unit:             s.Unit,
 		}
-		newSymbolMap[s.Name] = def
 	}
 	mw.symbolMap = newSymbolMap
 }
 
-func (mw *MainWindow) openBrowser(url string) {
-	var err error
-	switch runtime.GOOS {
-	case "linux":
-		err = exec.Command("xdg-open", url).Start()
-	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
-	}
-	if err != nil {
-		dialog.ShowError(err, mw)
-	}
-}
-
-func (mw *MainWindow) writeOutput(s string) {
+func (mw *MainWindow) Log(s string) {
 	debug.Log(s)
 	mw.outputData.Append(s)
 	mw.output.ScrollToBottom()

@@ -14,9 +14,8 @@ import (
 	"github.com/roffe/t7logger/pkg/widgets"
 )
 
-func (mw *MainWindow) newLogBtn() *widget.Button {
-	var logBtn *widget.Button
-	logBtn = widget.NewButtonWithIcon("Start logging", theme.DownloadIcon(), func() {
+func (mw *MainWindow) newLogBtn() {
+	mw.logBtn = widget.NewButtonWithIcon("Start logging", theme.DownloadIcon(), func() {
 		if mw.loggingRunning {
 			if mw.dlc != nil {
 				mw.dlc.Close()
@@ -24,27 +23,34 @@ func (mw *MainWindow) newLogBtn() *widget.Button {
 			return
 		}
 		if !mw.loggingRunning {
-			device, err := mw.canSettings.GetAdapter(mw.writeOutput)
+			device, err := mw.canSettings.GetAdapter(mw.Log)
 			if err != nil {
 				dialog.ShowError(err, mw)
 				return
 			}
-			logBtn.SetText("Stop logging")
-			mw.dlc = datalogger.New(datalogger.Config{
+
+			mw.dlc, err = datalogger.New(datalogger.Config{
+				ECU:                   mw.ecuSelect.Selected,
 				Dev:                   device,
-				Variables:             mw.vars,
+				Variables:             mw.vars.Get(),
 				Freq:                  int(mw.freqSlider.Value),
-				OnMessage:             mw.writeOutput,
+				OnMessage:             mw.Log,
 				CaptureCounter:        mw.captureCounter,
 				ErrorCounter:          mw.errorCounter,
 				ErrorPerSecondCounter: mw.errorPerSecondCounter,
 				Sink:                  mw.sinkManager,
 			})
-
+			if err != nil {
+				dialog.ShowError(err, mw)
+				return
+			}
 			go func() {
+				mw.loggingRunning = true
+				mw.logBtn.SetText("Stop logging")
+				mw.disableBtns()
+				defer mw.enableBtns()
 				mw.mockBtn.Disable()
 				defer mw.mockBtn.Enable()
-				mw.loggingRunning = true
 				mw.progressBar.Start()
 				if err := mw.dlc.Start(); err != nil {
 					dialog.ShowError(err, mw)
@@ -52,15 +58,14 @@ func (mw *MainWindow) newLogBtn() *widget.Button {
 				mw.progressBar.Stop()
 				mw.loggingRunning = false
 				mw.dlc = nil
-				logBtn.SetText("Start logging")
+				mw.logBtn.SetText("Start logging")
 			}()
 		}
 	})
-	return logBtn
 }
 
-func (mw *MainWindow) newOutputList() *widget.List {
-	list := widget.NewListWithData(
+func (mw *MainWindow) newOutputList() {
+	mw.output = widget.NewListWithData(
 		mw.outputData,
 		func() fyne.CanvasObject {
 			return &widget.Label{
@@ -73,12 +78,13 @@ func (mw *MainWindow) newOutputList() *widget.List {
 			i := item.(binding.String)
 			txt, err := i.Get()
 			if err != nil {
-				mw.writeOutput(err.Error())
+				mw.Log(err.Error())
 				return
 			}
 			obj.(*widget.Label).SetText(txt)
 		},
 	)
+
 	mw.symbolConfigList = widget.NewList(
 		func() int {
 			return mw.vars.Len()
@@ -91,25 +97,20 @@ func (mw *MainWindow) newOutputList() *widget.List {
 			coo.Update(lii, mw.vars.GetPos(lii))
 		},
 	)
-	return list
 }
 
-func (mw *MainWindow) newSymbolnameTypeahead() *xwidget.CompletionEntry {
-	symbolLookup := xwidget.NewCompletionEntry([]string{})
-
-	symbolLookup.PlaceHolder = "Type to search for symbols"
-
+func (mw *MainWindow) newSymbolnameTypeahead() {
+	mw.symbolLookup = xwidget.NewCompletionEntry([]string{})
+	mw.symbolLookup.PlaceHolder = "Type to search for symbols"
 	// When the use typed text, complete the list.
-	symbolLookup.OnChanged = func(s string) {
+	mw.symbolLookup.OnChanged = func(s string) {
 		// completion start for text length >= 3
 		if len(s) < 3 {
-			symbolLookup.HideCompletion()
+			mw.symbolLookup.HideCompletion()
 			return
 		}
-
 		// Get the list of possible completion
 		var results []string
-
 		for _, sym := range mw.symbolMap {
 			if strings.Contains(strings.ToLower(sym.Name), strings.ToLower(s)) {
 				results = append(results, sym.Name)
@@ -117,18 +118,13 @@ func (mw *MainWindow) newSymbolnameTypeahead() *xwidget.CompletionEntry {
 		}
 		// no results
 		if len(results) == 0 {
-			symbolLookup.HideCompletion()
+			mw.symbolLookup.HideCompletion()
 			return
 		}
 		sort.Slice(results, func(i, j int) bool { return strings.ToLower(results[i]) < strings.ToLower(results[j]) })
 
 		// then show them
-		symbolLookup.SetOptions(results)
-		symbolLookup.ShowCompletion()
+		mw.symbolLookup.SetOptions(results)
+		mw.symbolLookup.ShowCompletion()
 	}
-
-	if filename := mw.app.Preferences().String(prefsLastConfig); filename != "" {
-		mw.LoadConfig(filename)
-	}
-	return symbolLookup
 }
